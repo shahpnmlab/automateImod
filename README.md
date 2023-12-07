@@ -6,7 +6,7 @@ develop for it as well. However, dont hold your breath.
 
 ##INSTALLATION
 ```
-git clone 
+git clone https://github.com/shahpnmlab/automateImod.git
 conda create -n automateImod python=3.10 -y
 conda activate automateImod
 cd automateImod
@@ -38,7 +38,15 @@ Commands:
   reconstruct-tomograms
 ```
 ##USAGE
-The main sub-command that you will want to run is the align-tilts command
+Before staring to use the program make sure that the expected directory structure is followed, which is -
+```commandline
+/PATH/TO/TS_BASENAME/TS_BASENAME.{mrc,st}
+                     TS_BASENAME.rawtlt
+                     TS_BASENAME.mdoc
+```
+
+
+The main sub-command that you will want to run is the ```align-tilts``` command
 
 ```commandline
 automateImod align-tilts --help
@@ -58,12 +66,7 @@ Options:
 ```
 To align multiple series, run it as a bash ```for``` loop, by looping over folders within which the tilt-series data 
 resides.
-The expected folder structure is -
-```commandline
-/PATH/TO/TS_BASENAME/TS_BASENAME.{mrc,st}
-            TS_BASENAME.rawtlt
-            TS_BASENAME.mdoc
-```
+
 The mdoc file is presently optional to include, but in the future, it will be used to identify 
 dark frames, as well frames that shift too much during the tilt series alignment process.
 
