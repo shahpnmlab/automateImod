@@ -1,10 +1,10 @@
-#automateImod
+# automateImod
 An IMOD wrapper for performing patch-based tilt-series alignment.
 This wrapper will continue being developed as and when I feel a certain functionality is needed.
 Also note that I am developing this against Warp/Relion/M pipeline. If I start using Relion 5.0 or < I might try to 
 develop for it as well. However, dont hold your breath.
 
-##INSTALLATION
+## INSTALLATION
 ```
 git clone https://github.com/shahpnmlab/automateImod.git
 conda create -n automateImod python=3.10 -y
@@ -37,7 +37,7 @@ Commands:
   dark-frames-remover
   reconstruct-tomograms
 ```
-##USAGE
+## USAGE
 Before staring to use the program make sure that the expected directory structure is followed, which is -
 ```commandline
 /PATH/TO/TS_BASENAME/TS_BASENAME.{mrc,st}
@@ -84,6 +84,6 @@ Options:
 
 ```
 
-##TODO
+##T ODO
 - Detect dark frames and note which ones those are in a log file by parsing the mdoc file.
 - Log tilts that move more than the hard-coded sDev and log the tilt names to a logfile.
