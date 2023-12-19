@@ -121,10 +121,30 @@ def align_tilts(ts_data_path: Path = typer.Option(..., help="directory containin
                 print("Maximum number of realignment attempts reached. \n"
                       "The final alignment accuracy is: \n"
                       f"Residual error (nm): {resid_error} (SD: {sd})")
-
-            #print("Alignment statistics are within acceptable limits. No further action required.")
+                #print("Alignment statistics are within acceptable limits. No further action required.")
 
         else:
             FileNotFoundError(f"File not found at: {ts_path}")
+
+@automateImod.command()
+def reconstruct_tomograms(ts_data_path: Path = typer.Option(..., help="directory containing tilt series data"),
+                          ts_basename: str = typer.Option(..., help="tilt series_basename e.g. Position_"),
+                          ts_extension: str = typer.Option(default="mrc",
+                                                           help="does the TS end with an st or mrc extension?"),
+                          tomo_bin: str = typer.Option(..., help="binned tomogram size")):
+
+    tomo = pio.Tomogram(path_to_data=ts_data_path, name=ts_basename, extension=ts_extension,binval=tomo_bin)
+
+    _, pixel_nm, dimX, dimY = pio.read_mrc(f'{tomo.tilt_dir_name()}/{tomo.name}.{tomo.extension}')
+
+    slab_thickness = calc.get_thickness(unbinned_voxel_size=pixel_nm*10, binval=tomo.binval)
+
+    coms.make_tomogram(tilt_dir_name=tomo.tilt_dir_name(), tilt_name=tomo.name, binval=tomo.binval, dimX=dimX, dimY=dimY,
+                       thickness=slab_thickness)
+
+    coms.execute_com_file(f'{str(tomo.tilt_dir_name())}/newst_ali.com', )
+    coms.execute_com_file(f'{str(tomo.tilt_dir_name())}/tilt_ali.com')
+    utils.swap_fast_slow_axes(tomo.tilt_dir_name(),tomo.name)
+
 if __name__ == '__main__':
     automateImod()
