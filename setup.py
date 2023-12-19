@@ -1,6 +1,7 @@
+import os
+
 import setuptools
 from setuptools import setup
-import os
 
 dependency_links = []
 install_requires = []
@@ -17,7 +18,7 @@ with open(os.path.abspath(os.path.join(os.path.dirname(__file__), "requirements.
         else:
             install_requires.append(line.strip())
 setup(name='automateImod',
-      version='',
+      version='0.2',
       url='',
       license='',
       author='Pranav NM Shah',
@@ -26,7 +27,7 @@ setup(name='automateImod',
       dependency_links=dependency_links,
       include_package_data=True,
       entry_points={
-          'console_scripts': ['automateImod=run:automateImod'],
+          'console_scripts': ['automateImod=automateImod.run:automateImod'],
       },
       zip_safe=False
       )

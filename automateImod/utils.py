@@ -1,0 +1,152 @@
+import subprocess
+
+import mrcfile
+import numpy as np
+from pathlib import Path
+import xml.etree.ElementTree as ET
+
+import automateImod.calc as calc
+import automateImod.pio as io
+
+
+def detect_large_shifts_afterxcorr(coarse_align_prexg, multiplier=3):
+    prexg_data = []
+    with open(coarse_align_prexg, "r") as file:
+        for line in file:
+            numbers = [float(num) for num in line.split()]
+            prexg_data.append(numbers[-2:])
+    prexg_data = np.array(prexg_data)
+    px_shift_dist = np.sqrt(np.sum(np.square(prexg_data), axis=1))
+
+    # Calculate the upper bound for outliers
+    Q3 = np.percentile(px_shift_dist, 75)
+    IQR = Q3 - np.percentile(px_shift_dist, 25)
+    upper_bound = Q3 + (multiplier * IQR)
+
+    large_shift_indices = np.where(px_shift_dist > upper_bound)[0]
+    return large_shift_indices
+
+
+def remove_tilts_with_large_shifts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
+    angpix = pixel_nm * 10
+    original_rawtlt_angles = np.loadtxt(ts.get_rawtlt_path())
+    mask = np.ones(len(im_data), dtype=bool)
+    mask[bad_idx] = False
+    # bad_tilts = original_rawtlt_angles[bad_tilt_indices]
+    # print("Saving a backup of the original TS and rawtlt files.")
+    # print("Removing tilts with large shifts...")
+    # print(f"Tilt series path: {original_ts_file}")
+    # print(f"Views with large shifts: {', '.join(map(lambda tilt: f'{tilt}˚', bad_tilts))}")
+    cleaned_mrc = im_data[mask]
+    cleaned_ts_rawtlt = original_rawtlt_angles[mask]
+
+    original_ts_file = ts.get_mrc_path()
+    original_ts_rawtlt = ts.get_rawtlt_path()
+
+    # Backup original TS data
+    mrcfile.write(name=f'{original_ts_file}~', data=im_data, voxel_size=angpix, overwrite=True)
+    np.savetxt(fname=f'{original_ts_rawtlt}~', X=original_rawtlt_angles, fmt='%0.2f')
+
+    # Write new TS data
+    mrcfile.write(name=f'{original_ts_file}', data=cleaned_mrc, voxel_size=angpix, overwrite=True)
+    np.savetxt(fname=f'{original_ts_rawtlt}', X=cleaned_ts_rawtlt, fmt='%0.2f')
+
+
+def get_alignment_error(tilt_dir_name):
+    with open(f'{tilt_dir_name}/align_patch.log', 'r') as f_in:
+        for line in f_in:
+            if "Ratio of total measured values to all unknowns" in line:
+                known_unknown_ratio = float(line.split("=")[-1])
+            if "Residual error mean and sd" in line:
+                a1 = line.split()
+                resid_err = float(a1[5])
+                sd = a1[6]
+            # if "error weighted mean" in line:
+            #     a2 = line.split()
+            #     resid_err_wt.append(a2[4])
+    return known_unknown_ratio, resid_err, sd
+
+
+def write_ta_coords_log(tilt_dir_name):
+    with open(f"{str(tilt_dir_name)}/taCoordinates.log", "w") as ali_log:
+        sbp_cmd = ['alignlog', '-c', f'{str(tilt_dir_name)}/align_patch.log']
+        write_taCoord_log = subprocess.run(sbp_cmd, stdout=ali_log,
+                                           stderr=subprocess.PIPE,
+                                           text=True)
+        print(write_taCoord_log.stdout)
+        print(write_taCoord_log.stderr)
+
+
+def improve_bad_alignments(tilt_dir_name, tilt_name):
+    tilt_dir_name = str(tilt_dir_name)
+    mod_file = tilt_dir_name + "/" + tilt_name + ".fid"
+    mod2txt = tilt_dir_name + "/" + tilt_name + ".txt"
+    txt4seed = tilt_dir_name + "/" + tilt_name + ".seed.txt"
+
+    align_log_vals = np.loadtxt(tilt_dir_name + "/" + "taCoordinates.log", skiprows=2)
+
+    contour_resid, median_residual = calc.median_residual(align_log_vals)
+
+    goodpoints = np.where(contour_resid[:, [1]] <= np.around(median_residual))
+    goodpoints = goodpoints[0] + 1
+
+    # Convert the fiducial model file to a text file and readit in
+    subprocess.run(['model2point', '-contour', mod_file, mod2txt])
+
+    fid_text = np.loadtxt(mod2txt)
+    new_good_contours = np.empty((0, 4))
+
+    for i in range(goodpoints.shape[0]):
+        a = fid_text[fid_text[:, 0] == goodpoints[i]]
+        new_good_contours = np.append(new_good_contours, a, axis=0)
+
+    number_of_new_contours = np.unique(new_good_contours[:, 0]).shape[0]
+    number_of_new_contours = np.arange(number_of_new_contours) + 1
+
+    repeats = np.unique(new_good_contours[:, -1]).shape[0]
+    new_contour_id = np.repeat(number_of_new_contours, repeats)
+    new_contour_id = new_contour_id.reshape(new_contour_id.shape[0], 1)
+    new_good_contours = np.hstack((new_contour_id, new_good_contours[:, 1:]))
+
+    np.savetxt(txt4seed, new_good_contours, fmt=' '.join(['%d'] + ['%0.3f'] * 2 + ['%d']))
+
+    subprocess.run(
+        ['point2model', '-open', '-circle', '6', '-image', tilt_dir_name + "/" + tilt_name + "_preali.mrc", txt4seed,
+         mod_file])
+
+
+def swap_fast_slow_axes(tilt_dirname, tilt_name):
+    d, pixel_nm, _, _, = io.read_mrc(f'{tilt_dirname}/{tilt_name}.rec')
+    d = np.swapaxes(d, 0, 1)
+    mrcfile.write(f'{tilt_dirname}/{tilt_name}.rec', data=d, voxel_size=pixel_nm * 10, overwrite=True)
+
+
+def match_partial_filename(string_to_match, target_string):
+    if string_to_match in target_string:
+        return True
+    else:
+        print("Could not match string. Check if the file exists.")
+        return False
+
+
+def update_xml_files(xml_file_path, bad_tilt_indices):
+    if xml_file_path.exists():
+        tree = ET.parse(xml_file_path)
+        root = tree.getroot()
+
+        use_tilt_element = root.find('UseTilt')
+        if use_tilt_element is not None:
+            # Split the string into a list, modify the values, and then join back into a string
+            use_tilt_values = use_tilt_element.text.split('\n')
+            for idx in bad_tilt_indices:
+                if 0 <= idx < len(use_tilt_values):
+                    use_tilt_values[idx] = 'False'
+            use_tilt_element.text = '\n'.join(use_tilt_values)
+
+            tree.write(xml_file_path, encoding='utf-16')
+    else:
+        print(f"XML file {xml_file_path} not found.")
+
+if __name__ == '__main__':
+    a = detect_large_shifts_afterxcorr("/Users/ps/data/wip/automateImod/example_data/Frames/imod/Position_39_3/Position_39_3.prexg")
+    print(a)
