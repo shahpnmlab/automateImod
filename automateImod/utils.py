@@ -9,7 +9,7 @@ import automateImod.calc as calc
 import automateImod.pio as io
 
 
-def detect_large_shifts_afterxcorr(coarse_align_prexg, multiplier=3):
+def detect_large_shifts_afterxcorr(coarse_align_prexg, multiplier=1.5):
     prexg_data = []
     with open(coarse_align_prexg, "r") as file:
         for line in file:

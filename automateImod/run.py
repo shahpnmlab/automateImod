@@ -133,18 +133,18 @@ def reconstruct_tomograms(ts_data_path: Path = typer.Option(..., help="directory
                                                            help="does the TS end with an st or mrc extension?"),
                           tomo_bin: str = typer.Option(..., help="binned tomogram size")):
 
-    tomo = pio.Tomogram(path_to_data=ts_data_path, name=ts_basename, extension=ts_extension,binval=tomo_bin)
+    tomo = pio.Tomogram(path_to_data=ts_data_path, basename=ts_basename, extension=ts_extension,binval=tomo_bin)
 
-    _, pixel_nm, dimX, dimY = pio.read_mrc(f'{tomo.tilt_dir_name()}/{tomo.name}.{tomo.extension}')
+    _, pixel_nm, dimX, dimY = pio.read_mrc(f'{tomo.tilt_dir_name}/{tomo.basename}.{tomo.extension}')
 
     slab_thickness = calc.get_thickness(unbinned_voxel_size=pixel_nm*10, binval=tomo.binval)
 
-    coms.make_tomogram(tilt_dir_name=tomo.tilt_dir_name(), tilt_name=tomo.name, binval=tomo.binval, dimX=dimX, dimY=dimY,
-                       thickness=slab_thickness)
+    coms.make_tomogram(tilt_dir_name=tomo.tilt_dir_name, tilt_name=tomo.basename, tilt_extension=tomo.extension,
+                       binval=tomo.binval, dimX=dimX, dimY=dimY, thickness=slab_thickness)
 
-    coms.execute_com_file(f'{str(tomo.tilt_dir_name())}/newst_ali.com', )
-    coms.execute_com_file(f'{str(tomo.tilt_dir_name())}/tilt_ali.com')
-    utils.swap_fast_slow_axes(tomo.tilt_dir_name(),tomo.name)
+    coms.execute_com_file(f'{str(tomo.tilt_dir_name)}/newst_ali.com', )
+    coms.execute_com_file(f'{str(tomo.tilt_dir_name)}/tilt_ali.com')
+    utils.swap_fast_slow_axes(tomo.tilt_dir_name,tomo.basename)
 
 if __name__ == '__main__':
     automateImod()

@@ -89,11 +89,12 @@ class Tomogram(BaseModel):
     extension: str = None
     thickness: str = None
     binval: str = None
+    tilt_dir_name: Path = None
 
-    def tilt_dir_name(self):
-        if self.path_to_data and self.name:
-            return Path(self.path_to_data) / self.name
-        return None
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.path_to_data and self.basename:
+            self.tilt_dir_name = Path(self.path_to_data) / self.basename
 
 
 def read_mrc(mrcin):

@@ -207,7 +207,7 @@ def track_patch_com(tilt_dir_name, tilt_name, pixel_nm, binval, tilt_axis_ang, d
         fout.write("$if (-e ./savework) ./savework\n")
 
 
-def make_tomogram(tilt_dir_name, tilt_name, dimX, dimY, binval, thickness):
+def make_tomogram(tilt_dir_name, tilt_name, tilt_extension, dimX, dimY, binval, thickness):
     dimX = int(dimX)
     dimY = int(dimY)
     binval = int(binval)
@@ -221,7 +221,7 @@ def make_tomogram(tilt_dir_name, tilt_name, dimX, dimY, binval, thickness):
         fout.write(f'# 300 pixels above the center, etc.\n')
         fout.write(f'#\n')
         fout.write(f'$newstack -StandardInput\n')
-        fout.write(f'InputFile   {tilt_dir_name}/{tilt_name}.mrc\n')
+        fout.write(f'InputFile   {tilt_dir_name}/{tilt_name}.{tilt_extension}\n')
         fout.write(f'OutputFile  {tilt_dir_name}/{tilt_name}.ali\n')
         fout.write(f'TransformFile   {tilt_dir_name}/{tilt_name}.xf\n')
         fout.write(f'TaperAtFill 1,0\n')
