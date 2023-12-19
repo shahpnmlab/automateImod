@@ -1,10 +1,12 @@
-#automateImod
+# automateImod
+
 An IMOD wrapper for performing patch-based tilt-series alignment.
 This wrapper will continue being developed as and when I feel a certain functionality is needed.
-Also note that I am developing this against Warp/Relion/M pipeline. If I start using Relion 5.0 or < I might try to 
+Also note that I am developing this against Warp/Relion/M pipeline. If I start using Relion 5.0 or < I might try to
 develop for it as well. However, dont hold your breath.
 
-##INSTALLATION
+##I NSTALLATION
+
 ```
 git clone https://github.com/shahpnmlab/automateImod.git
 conda create -n automateImod python=3.10 -y
@@ -14,13 +16,13 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-
-Also verify that IMOD is installed in your user account and installed and in your ```$PATH```; ```which 3dmod```should tell you the path to your 3dmod executable.
-
+Also verify that IMOD is installed in your user account and installed and in your ```$PATH```; ```which 3dmod```should
+tell you the path to your 3dmod executable.
 
 Verify if the package has been installed using the following command
 ```automateImod --help```
 You should see -
+
 ```commandline
 Usage: automateImod [OPTIONS] COMMAND [ARGS]...
 
@@ -37,14 +39,16 @@ Commands:
   dark-frames-remover
   reconstruct-tomograms
 ```
-##USAGE
+
+## USAGE
+
 Before staring to use the program make sure that the expected directory structure is followed, which is -
+
 ```commandline
 /PATH/TO/TS_BASENAME/TS_BASENAME.{mrc,st}
                      TS_BASENAME.rawtlt
                      TS_BASENAME.mdoc
 ```
-
 
 The main sub-command that you will want to run is the ```align-tilts``` command
 
@@ -64,13 +68,15 @@ Options:
   --ts-patch-size TEXT  Size of patches to perform patch_tracking  [required]
   --help                Show this message and exit.
 ```
-To align multiple series, run it as a bash ```for``` loop, by looping over folders within which the tilt-series data 
+
+To align multiple series, run it as a bash ```for``` loop, by looping over folders within which the tilt-series data
 resides.
 
-The mdoc file is presently optional to include, but in the future, it will be used to identify 
+The mdoc file is presently optional to include, but in the future, it will be used to identify
 dark frames, as well frames that shift too much during the tilt series alignment process.
 
 You can briefly review the results of your aligned tilt-series by reconstructing tomograms by running -
+
 ```commandline
 Usage: automateImod reconstruct-tomograms [OPTIONS]
 
@@ -85,5 +91,6 @@ Options:
 ```
 
 ##TODO
+
 - Detect dark frames and note which ones those are in a log file by parsing the mdoc file.
 - Log tilts that move more than the hard-coded sDev and log the tilt names to a logfile.

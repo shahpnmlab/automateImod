@@ -1,3 +1,6 @@
+import subprocess
+import logging
+
 def write_xcorr_com(tilt_dir_name, tilt_name, tilt_extension, tilt_axis_ang):
     """
     coarse_align
@@ -265,3 +268,27 @@ def make_tomogram(tilt_dir_name, tilt_name, dimX, dimY, binval, thickness):
         fout.write(f'XTILTFILE {tilt_dir_name}/{tilt_name}.xtilt\n')
         fout.write(f'FakeSIRTiterations 20\n')
         fout.write(f'$if (-e ./savework) ./savework\n')
+
+
+def execute_com_file(path_to_com_file, additional_args=None, capture_output=True):
+        """
+        Executes a given command using subprocess.
+
+        Args:
+            path_to_com_file (str): self-explanatory
+            additional_args (list, optional): Additional arguments for the command.
+            capture_output (bool, optional): Whether to capture output or not.
+
+        Returns:
+            str: The output of the subprocess command, if captured.
+        """
+        try:
+            cmd = ["submfg", f'{path_to_com_file}']
+            if additional_args:
+                cmd.extend(additional_args)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+            if capture_output:
+                print(result.stdout)
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Error running subprocess command: {e}")
+            print(f"Error: {e.stderr}")
