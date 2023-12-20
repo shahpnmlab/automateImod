@@ -108,4 +108,5 @@ Options:
 
 ```
 ## TODO
+-   Max XY shifts should not be greater than 
 -   Support Relion 5.0 star files at some point.

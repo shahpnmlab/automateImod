@@ -19,8 +19,8 @@ def detect_large_shifts_afterxcorr(coarse_align_prexg, multiplier=1.5):
     px_shift_dist = np.sqrt(np.sum(np.square(prexg_data), axis=1))
 
     # Calculate the upper bound for outliers
-    Q3 = np.percentile(px_shift_dist, 75)
-    IQR = Q3 - np.percentile(px_shift_dist, 25)
+    Q3 = np.percentile(px_shift_dist, 80)
+    IQR = Q3 - np.percentile(px_shift_dist, 20)
     upper_bound = Q3 + (multiplier * IQR)
 
     large_shift_indices = np.where(px_shift_dist > upper_bound)[0]
@@ -127,21 +127,13 @@ def match_partial_filename(string_to_match, target_string):
         return False
 
 
-def update_xml_files(xml_file_path, bad_tilt_indices):
+def update_xml_files(xml_file_path):
     if xml_file_path.exists():
         tree = ET.parse(xml_file_path)
         root = tree.getroot()
-
-        use_tilt_element = root.find('UseTilt')
-        if use_tilt_element is not None:
-            # Split the string into a list, modify the values, and then join back into a string
-            use_tilt_values = use_tilt_element.text.split('\n')
-            for idx in bad_tilt_indices:
-                if 0 <= idx < len(use_tilt_values):
-                    use_tilt_values[idx] = 'False'
-            use_tilt_element.text = '\n'.join(use_tilt_values)
-
-            tree.write(xml_file_path, encoding='utf-16')
+        if 'UnselectFilter' in root.attrib:
+            root.set('UnselectManual', str(True))
+            tree.write(xml_file_path)
     else:
         print(f"XML file {xml_file_path} not found.")
 
