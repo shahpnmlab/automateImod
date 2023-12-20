@@ -61,9 +61,6 @@ def get_alignment_error(tilt_dir_name):
                 a1 = line.split()
                 resid_err = float(a1[5])
                 sd = a1[6]
-            # if "error weighted mean" in line:
-            #     a2 = line.split()
-            #     resid_err_wt.append(a2[4])
     return known_unknown_ratio, resid_err, sd
 
 
@@ -110,9 +107,10 @@ def improve_bad_alignments(tilt_dir_name, tilt_name):
 
     np.savetxt(txt4seed, new_good_contours, fmt=' '.join(['%d'] + ['%0.3f'] * 2 + ['%d']))
 
-    subprocess.run(
-        ['point2model', '-open', '-circle', '6', '-image', tilt_dir_name + "/" + tilt_name + "_preali.mrc", txt4seed,
-         mod_file])
+    point_to_model_cmd = ['point2model', '-open', '-circle', '6', '-image', f"{tilt_dir_name}/{tilt_name}_preali.mrc",
+                          txt4seed,mod_file]
+
+    subprocess.run(point_to_model_cmd)
 
 
 def swap_fast_slow_axes(tilt_dirname, tilt_name):

@@ -20,7 +20,6 @@ class TiltSeries(BaseModel):
     extension: str = None
     patch_size: Union[str, int] = None
     tilt_frames: List[str] = []
-    stage_tilt_angles: List[float] = []
     tilt_angles: List[float] = []
     tilt_dir_name: Path = None
 
@@ -58,8 +57,8 @@ class TiltSeries(BaseModel):
                     # Sort the mdoc data to match the tilt_angles order
                     sorted_md = md.sort_values("TiltAngle", ascending=ascending)
                     self.tilt_frames = [self._strip_windows_path(path) for path in sorted_md["SubFramePath"]]
-                else:
-                    print(f"Mdoc file {self.mdoc} not found.")
+            else:
+                print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
 
     def read_rawtlt_file(self):
         tilt_angles = []
@@ -69,7 +68,7 @@ class TiltSeries(BaseModel):
                 with open(rawtlt_path, 'r') as file:
                     tilt_angles = [float(line.strip()) for line in file if line.strip()]
             else:
-                print(f"Rawtlt file {self.rawtlt} not found.")
+                print(f"Could not find {self.rawtlt} in {self.rawtlt_path}.")
         return tilt_angles
 
     @staticmethod
@@ -104,3 +103,15 @@ def read_mrc(mrcin):
         dimY = str(mrc.header.ny)
         pixel_nm = (mrc.voxel_size.x) / 10
     return data, pixel_nm, dimX, dimY
+
+
+if __name__ == '__main__':
+    a = TiltSeries(path_to_ts_data="/Users/ps/data/wip/automateImod/example_data/Frames/imod/",
+                   path_to_xml_data="None",
+                   path_to_mdoc_data="/Users/ps/data/wip/automateImod/example_data/mdoc",
+                   basename="Position_39_3",
+                   extension="st",
+                   binval="5",
+                   tilt_axis_ang="84.7",
+                   patch_size="350")
+    print(a.tilt_frames)
