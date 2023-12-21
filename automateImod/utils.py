@@ -9,7 +9,7 @@ import automateImod.calc as calc
 import automateImod.pio as io
 
 
-def detect_large_shifts_afterxcorr(coarse_align_prexg, multiplier=1.5):
+def detect_large_shifts_afterxcorr(coarse_align_prexg, max_px_shift=150, multiplier=1.5):
     prexg_data = []
     with open(coarse_align_prexg, "r") as file:
         for line in file:
@@ -17,14 +17,15 @@ def detect_large_shifts_afterxcorr(coarse_align_prexg, multiplier=1.5):
             prexg_data.append(numbers[-2:])
     prexg_data = np.array(prexg_data)
     px_shift_dist = np.sqrt(np.sum(np.square(prexg_data), axis=1))
-
-    # Calculate the upper bound for outliers
-    Q3 = np.percentile(px_shift_dist, 80)
-    IQR = Q3 - np.percentile(px_shift_dist, 20)
-    upper_bound = Q3 + (multiplier * IQR)
-
-    large_shift_indices = np.where(px_shift_dist > upper_bound)[0]
-    return large_shift_indices
+    if px_shift_dist.max() > max_px_shift:
+        # Calculate the upper bound for outliers
+        Q3 = np.percentile(px_shift_dist, 80)
+        IQR = Q3 - np.percentile(px_shift_dist, 20)
+        upper_bound = Q3 + (multiplier * IQR)
+        large_shift_indices = np.where(px_shift_dist > upper_bound)[0]
+        return large_shift_indices
+    else:
+        return np.array([])
 
 
 def remove_tilts_with_large_shifts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
@@ -32,11 +33,6 @@ def remove_tilts_with_large_shifts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx
     original_rawtlt_angles = np.loadtxt(ts.get_rawtlt_path())
     mask = np.ones(len(im_data), dtype=bool)
     mask[bad_idx] = False
-    # bad_tilts = original_rawtlt_angles[bad_tilt_indices]
-    # print("Saving a backup of the original TS and rawtlt files.")
-    # print("Removing tilts with large shifts...")
-    # print(f"Tilt series path: {original_ts_file}")
-    # print(f"Views with large shifts: {', '.join(map(lambda tilt: f'{tilt}˚', bad_tilts))}")
     cleaned_mrc = im_data[mask]
     cleaned_ts_rawtlt = original_rawtlt_angles[mask]
 
@@ -108,7 +104,7 @@ def improve_bad_alignments(tilt_dir_name, tilt_name):
     np.savetxt(txt4seed, new_good_contours, fmt=' '.join(['%d'] + ['%0.3f'] * 2 + ['%d']))
 
     point_to_model_cmd = ['point2model', '-open', '-circle', '6', '-image', f"{tilt_dir_name}/{tilt_name}_preali.mrc",
-                          txt4seed,mod_file]
+                          txt4seed, mod_file]
 
     subprocess.run(point_to_model_cmd)
 
@@ -137,6 +133,8 @@ def update_xml_files(xml_file_path):
     else:
         print(f"XML file {xml_file_path} not found.")
 
+
 if __name__ == '__main__':
-    a = detect_large_shifts_afterxcorr("/Users/ps/data/wip/automateImod/example_data/Frames/imod/Position_39_3/Position_39_3.prexg")
+    a = detect_large_shifts_afterxcorr(
+        "/Users/ps/data/wip/automateImod/example_data/Frames/imod/lam1_poly1_ts_006/lam1_poly1_ts_006.prexg")
     print(a)
