@@ -1,5 +1,6 @@
 import mrcfile
 import mdocfile
+import numpy as np
 from pathlib import Path, PureWindowsPath
 from pydantic import BaseModel
 from typing import Union, List
@@ -51,12 +52,14 @@ class TiltSeries(BaseModel):
             md_path = Path(self.path_to_mdoc_data) / self.mdoc
             if md_path.exists():
                 md = mdocfile.read(md_path)
-                if self.tilt_angles:
+                if len(self.tilt_angles):
                     # Determine the sorting order (ascending or descending)
                     ascending = self.tilt_angles[0] < self.tilt_angles[-1]
                     # Sort the mdoc data to match the tilt_angles order
                     sorted_md = md.sort_values("TiltAngle", ascending=ascending)
-                    self.tilt_frames = [self._strip_windows_path(path) for path in sorted_md["SubFramePath"]]
+                    sorted_md["TiltAngle"] = sorted_md["TiltAngle"].round(1)
+                    filtered_df = sorted_md[sorted_md["TiltAngle"].isin(self.tilt_angles)]
+                    self.tilt_frames = filtered_df["SubFramePath"].apply(lambda x: PureWindowsPath(x).name).to_list()
             else:
                 print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
 
@@ -65,8 +68,7 @@ class TiltSeries(BaseModel):
         if self.rawtlt:
             rawtlt_path = Path(self.tilt_dir_name) / self.rawtlt
             if rawtlt_path.exists():
-                with open(rawtlt_path, 'r') as file:
-                    tilt_angles = [float(line.strip()) for line in file if line.strip()]
+                tilt_angles = np.loadtxt(rawtlt_path)
             else:
                 print(f"Could not find {self.rawtlt} in {self.rawtlt_path}.")
         return tilt_angles
@@ -101,7 +103,7 @@ def read_mrc(mrcin):
         data = mrc.data
         dimX = str(mrc.header.nx)
         dimY = str(mrc.header.ny)
-        pixel_nm = (mrc.voxel_size.x) / 10
+        pixel_nm = mrc.voxel_size.x / 10
     return data, pixel_nm, dimX, dimY
 
 
