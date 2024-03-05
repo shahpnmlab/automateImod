@@ -1,15 +1,13 @@
 import subprocess
-
 import mrcfile
 import numpy as np
-from pathlib import Path
 import xml.etree.ElementTree as ET
 
 import automateImod.calc as calc
 import automateImod.pio as io
 
 
-def detect_large_shifts_afterxcorr(coarse_align_prexg, max_px_shift=150, multiplier=1.5):
+def detect_large_shifts_afterxcorr(coarse_align_prexg, shifts_threshold=1.5):
     prexg_data = []
     with open(coarse_align_prexg, "r") as file:
         for line in file:
@@ -17,18 +15,23 @@ def detect_large_shifts_afterxcorr(coarse_align_prexg, max_px_shift=150, multipl
             prexg_data.append(numbers[-2:])
     prexg_data = np.array(prexg_data)
     px_shift_dist = np.sqrt(np.sum(np.square(prexg_data), axis=1))
-    if px_shift_dist.max() > max_px_shift:
-        # Calculate the upper bound for outliers
-        Q3 = np.percentile(px_shift_dist, 80)
-        IQR = Q3 - np.percentile(px_shift_dist, 20)
-        upper_bound = Q3 + (multiplier * IQR)
-        large_shift_indices = np.where(px_shift_dist > upper_bound)[0]
-        return large_shift_indices
-    else:
-        return np.array([])
+    median_px_shift = np.median(px_shift_dist)
+    whoisbigger = px_shift_dist / median_px_shift
+    large_shift_indices = np.where(whoisbigger > shifts_threshold)[0].tolist()
+    # if px_shift_dist.max() > max_dist_shift:
+    #     # Calculate the upper bound for outliers
+    #     Q3 = np.percentile(px_shift_dist, 80)
+    #     IQR = Q3 - np.percentile(px_shift_dist, 20)
+    #     #upper_bound = Q3 + (multiplier * IQR)
+    #     upper_bound = Q3 + IQR
+    #     large_shift_indices = np.where(px_shift_dist > Q3)[0]
+    #     # large_shift_indices_1_based = [index + 1 for index in large_shift_indices]
+    return large_shift_indices
+    # else:
+    #      return np.array([])
 
 
-def remove_tilts_with_large_shifts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
+def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
     angpix = pixel_nm * 10
     original_rawtlt_angles = np.loadtxt(ts.get_rawtlt_path())
     mask = np.ones(len(im_data), dtype=bool)
@@ -109,6 +112,65 @@ def improve_bad_alignments(tilt_dir_name, tilt_name):
     subprocess.run(point_to_model_cmd)
 
 
+# def detect_dark_tilts(ts_data, ts_tilt_angles, darkness_threshold: float = 10):
+#     # """
+#     #
+#     # """
+#     tilt_series_mid_point_idx = calc.find_symmetric_tilt_reference(ts_tilt_angles)
+#     ref_image = ts_data[tilt_series_mid_point_idx, :, :]
+#     normalised_reference_image = calc.normalize(ref_image)
+#     reference_mean, reference_sDev = normalised_reference_image.mean(), normalised_reference_image.std()
+#     normalized_images = calc.normalize(ts_data)
+#
+#     means = normalized_images.mean(axis=(1, 2))
+#     sDevs = normalized_images.std(axis=(1, 2))
+#
+#     coeffs_of_variance = sDevs / means # Adding a small value to avoid division by zero
+#
+#     reference_coeff_of_variance = reference_sDev / reference_mean
+#
+#     whoisbigger = coeffs_of_variance / reference_coeff_of_variance
+#
+#     dark_frame_indices = np.where(whoisbigger > darkness_threshold)[0].tolist()
+#     return dark_frame_indices
+# def detect_dark_tilts(ts_data, ts_tilt_angles, darkness_threshold: float = 0.5):
+#     tilt_series_mid_point_idx = calc.find_symmetric_tilt_reference(ts_tilt_angles)
+#     ref_image = ts_data[tilt_series_mid_point_idx, :, :]
+#     normalised_reference_image = calc.normalize(ref_image)
+#     #reference_mean, reference_sDev = normalised_reference_image.mean(), normalised_reference_image.std()
+#
+#     normalized_images = calc.normalize(ts_data)
+#     means = normalized_images.mean(axis=(1, 2))
+#     sDevs = normalized_images.std(axis=(1, 2))
+#     coeffs_of_variance = sDevs / (means + 1e-6)  # Ensure no division by zero
+#
+#     # Assuming lower coeffs_of_variance indicate darker tilts directly
+#     dark_frame_indices = np.where(coeffs_of_variance < darkness_threshold)[0].tolist()
+#     return dark_frame_indices
+
+def detect_dark_tilts(ts_data, ts_tilt_angles, brightness_factor=0.65, variance_factor=0.5):
+    # Identify the reference image, typically at or near 0 tilt
+    tilt_series_mid_point_idx = calc.find_symmetric_tilt_reference(ts_tilt_angles)
+    normalized_images = calc.normalize(ts_data)
+    reference_image = normalized_images[tilt_series_mid_point_idx, :, :]
+
+    # Calculate mean intensity and standard deviation for the reference image
+    reference_mean_intensity = np.mean(reference_image)
+    reference_std_deviation = np.std(reference_image)
+
+    # Calculate dynamic thresholds
+    threshold_intensity = reference_mean_intensity * brightness_factor
+    threshold_variance = reference_std_deviation * variance_factor
+
+    # Calculate mean intensities and standard deviations for all tilts
+    mean_intensities = np.mean(normalized_images, axis=(1, 2))
+    std_deviations = np.std(normalized_images, axis=(1, 2))
+
+    # Identify dark tilts based on mean intensity and standard deviation
+    dark_frame_indices = np.where((mean_intensities < threshold_intensity) & (std_deviations < threshold_variance))[0].tolist()
+
+    return dark_frame_indices
+
 def swap_fast_slow_axes(tilt_dirname, tilt_name):
     d, pixel_nm, _, _, = io.read_mrc(f'{tilt_dirname}/{tilt_name}.rec')
     d = np.swapaxes(d, 0, 1)
@@ -135,6 +197,9 @@ def update_xml_files(xml_file_path):
 
 
 if __name__ == '__main__':
-    a = detect_large_shifts_afterxcorr(
-        "/Users/ps/data/wip/automateImod/example_data/Frames/imod/lam1_poly1_ts_006/lam1_poly1_ts_006.prexg")
+    ts_object = io.TiltSeries(path_to_ts_data="/Users/ps/data/wip/automateImod/example_data/Frames/imod/",
+                              path_to_mdoc_data="/Users/ps/data/wip/automateImod/example_data/Frames/mdoc/",
+                              basename="map-26-A4_ts_002",
+                              tilt_axis_ang=60, binval=10, patch_size=10)
+    a = detect_dark_tilts(ts_object)
     print(a)

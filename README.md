@@ -50,6 +50,8 @@ Before staring to use the program make sure that the expected directory structur
                      
 /PATH/TO/MDOCS/TS_BASENAME.mdoc
 ```
+Note that the script cannot handle ```TS_BASENAME.mrc.mdoc``` files. In order to make things work, rename the mdoc file as indicated above. And NO, i will not modify my script to handle badly named mdoc files.
+
 
 The main sub-command that you will want to run is the ```align-tilts``` command
 
@@ -63,8 +65,6 @@ Options:
   --ts-data-path PATH   directory containing tilt series data  [required]
   --ts-mdoc-path PATH   directory containing the tilt series mdoc file
   --ts-basename TEXT    tilt series_basename e.g. Position_1  [required]
-  --ts-extension TEXT   does the TS end with an st or mrc extension?
-                        [default: mrc]
   --ts-tilt-axis TEXT   tilt axis value  [required]
   --ts-bin TEXT         bin value to reduce the tilt series size by.
                         [required]
@@ -107,6 +107,13 @@ Options:
   --help               Show this message and exit.
 
 ```
-## TODO
--   Max XY shifts should not be greater than 
--   Support Relion 5.0 star files at some point.
+
+# Changelog 
+## v0.4.1
+- Introduced a dark tilt detection routine to remove these tilts even before performing coarse alignments.
+- Automatic detection of tilt series extension.
+
+# TODO
+- Make Warp compatible... somehow!
+- Support Relion 5.0 star files at some point.
+- The automateImod.marker file has the wrong tilt indices.

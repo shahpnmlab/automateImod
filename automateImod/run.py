@@ -1,7 +1,6 @@
 import typer
-
+import subprocess
 import pandas as pd
-
 from pathlib import Path
 
 import automateImod.calc as calc
@@ -9,13 +8,16 @@ import automateImod.coms as coms
 import automateImod.utils as utils
 import automateImod.pio as pio
 
+# TODO: 4. Surely warp can be tricked into accepting decimated stack results...
+# TODO: 4. bazooka - remove offending entries from the tomostar file AND rename the xml file for the frame.
+
 automateImod = typer.Typer()
+
 
 @automateImod.command(no_args_is_help=True)
 def align_tilts(ts_data_path: Path = typer.Option(..., help="directory containing tilt series data"),
                 ts_mdoc_path: Path = typer.Option(None, help="directory containing the tilt series mdoc file"),
                 ts_basename: str = typer.Option(..., help="tilt series_basename e.g. Position_1"),
-                ts_extension: str = typer.Option(default="mrc", help="does the TS end with an st or mrc extension?"),
                 ts_tilt_axis: str = typer.Option(..., help="tilt axis value"),
                 ts_bin: str = typer.Option(..., help="bin value to reduce the tilt series size by."),
                 ts_patch_size: str = typer.Option(..., help="Size of patches to perform patch_tracking")):
@@ -23,8 +25,7 @@ def align_tilts(ts_data_path: Path = typer.Option(..., help="directory containin
     Perform patch-based tilt series tracking using IMOD routines
     """
     # Initialise a TS object with user inputs
-    ts = pio.TiltSeries(path_to_ts_data=ts_data_path, path_to_mdoc_data=ts_mdoc_path,
-                        basename=ts_basename, extension=ts_extension,
+    ts = pio.TiltSeries(path_to_ts_data=ts_data_path, path_to_mdoc_data=ts_mdoc_path, basename=ts_basename,
                         tilt_axis_ang=ts_tilt_axis, binval=ts_bin, patch_size=ts_patch_size)
     ts_path = ts.get_mrc_path()
     marker_file = ts.tilt_dir_name / "autoImod.marker"
@@ -41,31 +42,47 @@ def align_tilts(ts_data_path: Path = typer.Option(..., help="directory containin
         coms.track_patch_com(tilt_dir_name=ts.tilt_dir_name, tilt_name=ts.basename, pixel_nm=pixel_nm, binval=ts.binval,
                              tilt_axis_ang=ts.tilt_axis_ang, dimX=dimX, dimY=dimY)
 
-        coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
-        coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
-
         if not marker_file.exists():
+            marker_file.touch()
             print(f"Marker file not detected in {marker_file.parent}\nProcessing...")
-            bad_tilt_indices = utils.detect_large_shifts_afterxcorr(f'{ts.tilt_dir_name}/{ts.basename}.prexg')
+            print("Looking for dark tilts...")
 
-            if bad_tilt_indices.size > 0:
+            dark_frame_indices = utils.detect_dark_tilts(ts_data=im_data, ts_tilt_angles=ts.read_rawtlt_file())
 
-                print(f'Detected {len(bad_tilt_indices)} bad tilts in {ts.basename}')
-                print(f'Removing views with large shifts and redoing coarse alignment.')
-                utils.remove_tilts_with_large_shifts(ts=ts, im_data=im_data, pixel_nm=pixel_nm,
-                                                     bad_idx=bad_tilt_indices)
-                print(f"Redoing coarse alignment with decimated {ts.basename}")
+            if len(dark_frame_indices) > 0:
+                print(f'Detected {len(dark_frame_indices)} dark tilts in {ts.basename}')
+                print(f'Removing dark tilts...')
+                utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=dark_frame_indices)
+                ts.remove_frames(dark_frame_indices)
+                del im_data
+                im_data, pixel_nm, dimX, dimY = pio.read_mrc(ts_path)
+            else:
+                print("No dark frames found in the current tilt series. Proceeding with coarse alignments...")
+
+            coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
+            coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
+
+            with open(marker_file, "w") as fout:
+                fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
+                for idx, value in enumerate(dark_frame_indices):
+                    fout.write(f"{ts.tilt_frames[value]},{ts.tilt_angles[value]},{dark_frame_indices[idx]}\n")
+
+            large_shift_indices = utils.detect_large_shifts_afterxcorr(f'{ts.tilt_dir_name}/{ts.basename}.prexg')
+
+            if len(large_shift_indices) > 0:
+                print(f'Detected {len(large_shift_indices)} badly tracking tilts in {ts.basename}')
+                print(f'Removing badly tracked tilts...')
+                utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=large_shift_indices)
+                print(f"Redoing coarse alignment with decimated {ts.basename} stack")
 
                 coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
                 coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
 
-                marker_file.touch()
-                with open(marker_file, "w") as fout:
-                    fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
-                    for idx, value in enumerate(bad_tilt_indices):
-                        fout.write(f"{ts.tilt_frames[value]},{ts.tilt_angles[value]},{bad_tilt_indices[idx]}\n")
+                with open(marker_file, "a") as fout:
+                    for idx, value in enumerate(large_shift_indices):
+                        fout.write(f"{ts.tilt_frames[value]},{ts.tilt_angles[value]},{large_shift_indices[idx]}\n")
 
-        print(f"Performing patch-based alignment on {ts.basename}.")
+        print(f"Performing patch-based alignment on {ts.basename}")
         coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_patch.com', capture_output=False)
         coms.execute_com_file(f'{str(ts.tilt_dir_name)}/align_patch.com', capture_output=False)
         utils.write_ta_coords_log(tilt_dir_name=ts.tilt_dir_name)
@@ -145,19 +162,3 @@ def reconstruct_tomograms(ts_data_path: Path = typer.Option(..., help="directory
 
 if __name__ == '__main__':
     automateImod()
-
-"""
-Flow -
-1. initialise a TS object with user inputs
-2. initialse paths to xml and mdoc files which have the same basename as the TS
-3. read TS image 
-4. Make xcorr_coarse com file and execute it (xcorr_coarse). Make the aligned stack (newst_coarse).
-5. Read the .prexg file from step 4. and detect outliers.
-    - If outliers are detected 
-        Generate a new stack with same name as the original TS name but with the tilts with large shifts removed.
-6. Seed patches on the clean coarse aligned stack
-7. Track patches.
-    - If resid_err is worse than 1.5 and the known:unknown ratio is greater than 10, then
-        Remove outlier patches using the median value of the badly tracking patches and track with less badly tracking patches
-8. Report alignment stats for the aligned tilt series.
-"""

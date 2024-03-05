@@ -18,7 +18,7 @@ with open(os.path.abspath(os.path.join(os.path.dirname(__file__), "requirements.
         else:
             install_requires.append(line.strip())
 setup(name='automateImod',
-      version='0.4',
+      version='0.4.1',
       url='',
       license='',
       author='Pranav NM Shah',
