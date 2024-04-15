@@ -37,6 +37,7 @@ class TiltSeries(BaseModel):
             self.xml = f'{self.basename}.xml'
         self.tilt_angles = self.read_rawtlt_file()
         self.read_mdoc_file()
+
     def get_extension(self):
         if self.tilt_dir_name:  # Ensure tilt_dir_name is not None
             st_path = Path(f"{self.tilt_dir_name}/{self.basename}.st")
@@ -78,7 +79,8 @@ class TiltSeries(BaseModel):
         if self.rawtlt:
             rawtlt_path = self.get_rawtlt_path()
             if rawtlt_path.exists():
-                tilt_angles = np.loadtxt(rawtlt_path)
+                tilt_angles = np.round(np.loadtxt(rawtlt_path),decimals=1)
+
             else:
                 print(f"Could not find {self.rawtlt} in {rawtlt_path}.")
         return tilt_angles
@@ -100,6 +102,7 @@ class TiltSeries(BaseModel):
                     del self.tilt_frames[index]
                 if index < len(self.tilt_angles):
                     del self.tilt_angles[index]
+
 
 class Tomogram(BaseModel):
     path_to_data: Union[str, Path] = None

@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Tuple
 
+
 def median_residual(f):
     contour_resid = f[:, [0, 6]]
     all_residuals = contour_resid[:, 1]
@@ -13,20 +14,24 @@ def get_thickness(unbinned_voxel_size, binval):
     slab_thickness = int(2500 / curr_vox)
     return slab_thickness
 
+
 def calculate_frame_statistics(img_data: np.ndarray) -> Tuple[float, float]:
     """Calculate the mean and standard deviation of an image's pixel intensities."""
     mean = np.mean(img_data)
     std_dev = np.std(img_data)
     return mean, std_dev
 
+
 def normalize(data: np.array) -> np.array:
-    return (data-np.min(data))/(np.max(data)-np.min(data))
+    return (data - np.min(data)) / (np.max(data) - np.min(data))
+
 
 def robust_normalization(data: np.array) -> np.array:
     p5 = np.percentile(data, q=5)
     p95 = np.percentile(data[data != 0], q=95)
     median = np.median(data)
     return (data - median) / (p95 - p5)
+
 
 def find_symmetric_tilt_reference(tilt_angles):
     # Assuming tilt_angles is a sorted list of tilt angles
