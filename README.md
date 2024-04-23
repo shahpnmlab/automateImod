@@ -109,11 +109,13 @@ Options:
 ```
 
 # Changelog 
-## v0.4.1
+### v0.4.1
 - Introduced a dark tilt detection routine to remove these tilts even before performing coarse alignments.
 - Automatic detection of tilt series extension.
 
+### v0.4.2
+- Updates warp xml files by changing the \<frame\>.xml to \<frame\>.xml.bkp 
+- 
 # TODO
-- Make Warp compatible... somehow!
 - Support Relion 5.0 star files at some point.
 - The automateImod.marker file has the wrong tilt indices.

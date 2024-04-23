@@ -70,7 +70,7 @@ class TiltSeries(BaseModel):
                 sorted_md = md.sort_values("TiltAngle", ascending=ascending)
                 sorted_md["TiltAngle"] = sorted_md["TiltAngle"].round(1)
                 filtered_df = sorted_md[sorted_md["TiltAngle"].isin(self.tilt_angles)]
-                self.tilt_frames = filtered_df["SubFramePath"].apply(lambda x: PureWindowsPath(x).name).to_list()
+                self.tilt_frames = filtered_df["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
         else:
             print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
 
