@@ -132,7 +132,7 @@ def update_warp_xml(ts_xml_path: str = typer.Option(..., help="Path to Warp proc
         bad_frames = md["frame_basename"].to_list()
         for bad_frame in bad_frames:
             bad_frame_xml = Path(ts_xml_path) / f"{bad_frame}.xml"
-            utils.update_xml_files(bad_frame_xml)
+            utils.remove_xml_files(bad_frame_xml)
     else:
         FileNotFoundError(f"{md_file} does not exist.")
 
