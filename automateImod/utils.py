@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 import mrcfile
 import numpy as np
@@ -142,15 +143,23 @@ def match_partial_filename(string_to_match, target_string):
         return False
 
 
-def update_xml_files(xml_file_path):
+# def update_xml_files(xml_file_path):
+#     if xml_file_path.exists():
+#         tree = ET.parse(xml_file_path)
+#         root = tree.getroot()
+#         if 'UnselectFilter' in root.attrib:
+#             root.set('UnselectManual', str(True))
+#             tree.write(xml_file_path)
+#     else:
+#         print(f"XML file {xml_file_path} not found.")
+
+def remove_xml_files(xml_file_path):
     if xml_file_path.exists():
-        tree = ET.parse(xml_file_path)
-        root = tree.getroot()
-        if 'UnselectFilter' in root.attrib:
-            root.set('UnselectManual', str(True))
-            tree.write(xml_file_path)
-    else:
-        print(f"XML file {xml_file_path} not found.")
+        if xml_file_path.exists():
+            backup_file_path = xml_file_path.with_suffix('.xml.bkp')
+            shutil.move(xml_file_path, backup_file_path)
+        else:
+            print(f"XML file {xml_file_path} not found.")
 
 
 if __name__ == '__main__':
