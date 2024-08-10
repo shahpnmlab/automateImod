@@ -55,14 +55,21 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
                 utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=dark_frame_indices)
                 del im_data
                 im_data, pixel_nm, dimX, dimY = pio.read_mrc(ts_path)
+
+                # Write dark frames to marker file
+                with open(marker_file, "w") as fout:
+                    fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
+                    for idx in dark_frame_indices:
+                        if idx < len(ts.tilt_angles) and idx < len(ts.tilt_frames):
+                            frame_name = Path(ts.tilt_frames[idx]).stem
+                            fout.write(f"{frame_name},{ts.tilt_angles[idx]},{idx}\n")
+                        else:
+                            print(f"Warning: Index {idx} is out of range for tilt_angles or tilt_frames.")
             else:
                 print("No dark frames found in the current tilt series. Proceeding with coarse alignments...")
 
             coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
             coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
-
-            with open(marker_file, "w") as fout:
-                fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
 
             large_shift_indices = utils.detect_large_shifts_afterxcorr(f'{ts.tilt_dir_name}/{ts.basename}.prexg')
 
@@ -75,13 +82,14 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
                 coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
                 coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
 
+                # Append large shift frames to marker file
                 with open(marker_file, "a") as fout:
                     for idx in large_shift_indices:
-                        if idx < len(ts.tilt_angles):
-                            frame_name = ts.tilt_frames[idx] if idx < len(ts.tilt_frames) else f"frame_{idx}"
+                        if idx < len(ts.tilt_angles) and idx < len(ts.tilt_frames):
+                            frame_name = Path(ts.tilt_frames[idx]).stem
                             fout.write(f"{frame_name},{ts.tilt_angles[idx]},{idx}\n")
                         else:
-                            print(f"Warning: Index {idx} is out of range for tilt_angles.")
+                            print(f"Warning: Index {idx} is out of range for tilt_angles or tilt_frames.")
 
         print(f"Performing patch-based alignment on {ts.basename}")
         coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_patch.com', capture_output=False)
