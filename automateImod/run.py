@@ -165,7 +165,7 @@ def update_warp_xml(ts_basename: str = typer.Option(..., help="Basename of the t
     marker_file = Path(ts_log_path) / f"{ts_basename}/autoImod.marker"
     if marker_file.exists():
         md = pd.read_csv(marker_file, delimiter=',')
-        bad_frames = md["frame_basename"].to_list()
+        bad_frames = md["frame_basename"].tolist()
     else:
         print(f"Warning: {marker_file} does not exist.")
         return
@@ -206,8 +206,16 @@ def update_warp_xml(ts_basename: str = typer.Option(..., help="Basename of the t
         return
 
     tomostar_data = starfile.read(tomostar_file)
+
+    # Check if tomostar_data is a Series or DataFrame
+    if isinstance(tomostar_data['wrpMovieName'], pd.Series):
+        # If it's a Series, we need to convert it to a DataFrame
+        tomostar_data = pd.DataFrame(tomostar_data)
+
+    # Now we can safely use DataFrame operations
     good_mask = ~tomostar_data['wrpMovieName'].apply(lambda x: Path(x).stem).isin(bad_frames)
-    updated_tomostar_data = {col: tomostar_data[col][good_mask] for col in tomostar_data.keys()}
+    updated_tomostar_data = tomostar_data[good_mask]
+
     starfile.write(updated_tomostar_data, tomostar_file, overwrite=True)
     print(f"Updated tomostar file: {tomostar_file}")
 

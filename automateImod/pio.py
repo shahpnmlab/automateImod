@@ -76,7 +76,6 @@ class TiltSeries(BaseModel):
                 self.doses = tomostar_data['wrpDose']
 
                 print(f"Processed {len(self.tilt_frames)} tilt frames from tomostar file.")
-                print(f"Sample processed filename: {self.tilt_frames[0]}")
             except KeyError as e:
                 print(f"Error reading tomostar file: Missing key {e}")
             except Exception as e:
