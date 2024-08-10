@@ -78,11 +78,12 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
                 coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
 
                 with open(marker_file, "a") as fout:
-                    for idx, value in enumerate(large_shift_indices):
-                        if idx < len(ts.tilt_frames):
-                            fout.write(f"{ts.tilt_frames[idx]},{ts.tilt_angles[idx]},{large_shift_indices[idx]}\n")
+                    for idx in large_shift_indices:
+                        if idx < len(ts.tilt_angles):
+                            frame_name = ts.tilt_frames[idx] if idx < len(ts.tilt_frames) else f"frame_{idx}"
+                            fout.write(f"{frame_name},{ts.tilt_angles[idx]},{idx}\n")
                         else:
-                            print(f"Warning: Index {idx} is out of range for tilt_frames or tilt_angles.")
+                            print(f"Warning: Index {idx} is out of range for tilt_angles.")
 
             large_shift_indices = utils.detect_large_shifts_afterxcorr(f'{ts.tilt_dir_name}/{ts.basename}.prexg')
 

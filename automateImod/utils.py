@@ -28,9 +28,20 @@ def detect_large_shifts_afterxcorr(coarse_align_prexg, shifts_threshold=1.15):
 def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
     angpix = pixel_nm * 10
     original_rawtlt_angles = np.loadtxt(ts.get_rawtlt_path())
+
+    # Ensure bad_idx are within the range of im_data
+    bad_idx = [idx for idx in bad_idx if idx < len(im_data)]
+
     mask = np.ones(len(im_data), dtype=bool)
     mask[bad_idx] = False
     cleaned_mrc = im_data[mask]
+
+    # Ensure the mask is the same length as original_rawtlt_angles
+    if len(mask) > len(original_rawtlt_angles):
+        mask = mask[:len(original_rawtlt_angles)]
+    elif len(mask) < len(original_rawtlt_angles):
+        mask = np.pad(mask, (0, len(original_rawtlt_angles) - len(mask)), 'constant', constant_values=True)
+
     cleaned_ts_rawtlt = original_rawtlt_angles[mask]
 
     original_ts_file = ts.get_mrc_path()
@@ -43,6 +54,9 @@ def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
     # Write new TS data
     mrcfile.write(name=f'{original_ts_file}', data=cleaned_mrc, voxel_size=angpix, overwrite=True)
     np.savetxt(fname=f'{original_ts_rawtlt}', X=cleaned_ts_rawtlt, fmt='%0.2f')
+
+    # Update the TiltSeries object
+    ts.tilt_angles = cleaned_ts_rawtlt
 
 
 def get_alignment_error(tilt_dir_name):
