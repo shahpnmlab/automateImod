@@ -129,7 +129,6 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
 
 
 @automateImod.command()
-@automateImod.command()
 def update_warp_xml(ts_basename: str = typer.Option(..., help="Basename of the tilt series"),
                     ts_xml_path: str = typer.Option(..., help="Path to Warp processing results"),
                     ts_tomostar_path: str = typer.Option(..., help="Path to tomostar file"),
@@ -186,13 +185,11 @@ def update_warp_xml(ts_basename: str = typer.Option(..., help="Basename of the t
 
     tomostar_data = starfile.read(tomostar_file)
 
-    # Create a mask for good frames
+    if not isinstance(tomostar_data, dict) or 'wrpMovieName' not in tomostar_data:
+        print(f"Error: Invalid tomostar file format or missing 'wrpMovieName' column.")
+        return
     good_mask = ~tomostar_data['wrpMovieName'].apply(lambda x: Path(x).stem).isin(bad_frames)
-
-    # Apply the mask to all columns
     updated_tomostar_data = {col: tomostar_data[col][good_mask] for col in tomostar_data.keys()}
-
-    # Write the updated tomostar file
     starfile.write(updated_tomostar_data, tomostar_file, overwrite=True)
     print(f"Updated tomostar file: {tomostar_file}")
 
