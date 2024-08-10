@@ -55,28 +55,24 @@ class TiltSeries(BaseModel):
             self.tomostar = f'{self.basename}.tomostar'
         if self.path_to_tomostar:
             self.read_tomostar_file()
-        else:
-            self.read_rawtlt_file()
+        self.read_rawtlt_file()
         self.read_mdoc_file()
-        if self.path_to_xml_data:
-            self.read_xml_file()
-    def __init__(self, **data):
-        super().__init__(**data)
-        # self.get_extension()
-        if self.path_to_ts_data and self.basename:
-            # self.tilt_dir_name = Path(f"{data['path_to_ts_data']}/{data['basename']}")
-            self.tilt_dir_name = Path(self.path_to_ts_data) / self.basename
-            self.get_extension()
-            self.tilt_name = f"{self.basename}.{self.extension}" if self.extension else None
-            self.rawtlt = f'{self.basename}.rawtlt'
-            self.mdoc = f'{self.basename}.mdoc'
-            self.xml = f'{self.basename}.xml'
-            self.tomostar = f'{self.basename}.tomostar'
-        if self.path_to_tomostar:
-            self.read_tomostar_file()
+
+    def read_tomostar_file(self):
+        tomostar_path = Path(self.path_to_tomostar) / self.tomostar if self.path_to_tomostar and self.tomostar else None
+        if tomostar_path and tomostar_path.exists():
+            try:
+                tomostar_data = starfile.read(tomostar_path)
+                self.tilt_frames = [Path(frame).stem for frame in tomostar_data['wrpMovieName']]
+                self.tilt_angles = np.array(tomostar_data['wrpAngleTilt'])
+                self.axis_angles = tomostar_data['wrpAxisAngle']
+                self.doses = tomostar_data['wrpDose']
+            except KeyError as e:
+                print(f"Error reading tomostar file: Missing key {e}")
+            except Exception as e:
+                print(f"Error reading tomostar file: {e}")
         else:
-            self.read_rawtlt_file()
-        self.read_mdoc_file()
+            print(f"Could not find {self.tomostar} in {self.path_to_tomostar}.")
 
     def get_extension(self):
         if self.tilt_dir_name:  # Ensure tilt_dir_name is not None
@@ -120,28 +116,6 @@ class TiltSeries(BaseModel):
                 self.tilt_frames = md["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
         else:
             print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
-
-    def read_tomostar_file(self):
-        tomostar_path = Path(self.path_to_tomostar) / self.tomostar if self.path_to_tomostar and self.tomostar else None
-        if tomostar_path and tomostar_path.exists():
-            try:
-                # Read the tomostar file using starfile
-                tomostar_data = starfile.read(tomostar_path)
-
-                # Extract the relevant columns
-                self.tilt_frames = [Path(frame).stem for frame in tomostar_data['wrpMovieName']]
-                self.tilt_angles = np.array(tomostar_data['wrpAngleTilt'])
-                self.axis_angles = tomostar_data['wrpAxisAngle']
-                self.doses = tomostar_data['wrpDose']
-
-                # print(f"Tilt angles from tomostar: {self.tilt_angles}")
-                # print(f"Tilt frames from tomostar: {self.tilt_frames}")
-            except KeyError as e:
-                print(f"Error reading tomostar file: Missing key {e}")
-            except Exception as e:
-                print(f"Error reading tomostar file: {e}")
-        else:
-            print(f"Could not find {self.tomostar} in {self.path_to_tomostar}.")
 
     def read_rawtlt_file(self):
         rawtlt_path = self.get_rawtlt_path()

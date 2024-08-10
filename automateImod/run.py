@@ -68,10 +68,10 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
             # Write marker file (even if no dark frames were detected)
             with open(marker_file, "w") as fout:
                 fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
-                for idx in dark_frame_indices:  # This will be empty if no dark frames were detected
-                    if idx < len(original_tilt_angles) and idx < len(original_tilt_frames):
-                        frame_name = Path(original_tilt_frames[idx]).stem
-                        fout.write(f"{frame_name},{original_tilt_angles[idx]},{idx}\n")
+                for idx in dark_frame_indices:
+                    if idx < len(ts.tilt_frames) and idx < len(ts.tilt_angles):
+                        frame_name = ts.tilt_frames[idx]
+                        fout.write(f"{frame_name},{ts.tilt_angles[idx]},{idx}\n")
 
             coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
             coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
