@@ -1,33 +1,64 @@
 import mrcfile
 import starfile
 import mdocfile
-import numpy as np
 from pathlib import Path, PureWindowsPath
-from pydantic import BaseModel
-from typing import Union, List
+import xml.etree.ElementTree as ET
 
+from pydantic import BaseModel
+from typing import Union, List, Optional
+from pathlib import Path
+import numpy as np
 
 class TiltSeries(BaseModel):
-    path_to_ts_data: Union[str, Path] = None
-    path_to_xml_data: Union[str, Path] = None
-    path_to_mdoc_data: Union[str, Path] = None
-    basename: str = None
-    tilt_name: str = None
-    rawtlt: str = None
-    mdoc: str = None
-    xml: str = None
-    tilt_axis_ang: Union[str, float] = None
-    binval: Union[str, int] = None
-    z_height: Union[str, int] = None
-    extension: str = None
-    patch_size: Union[str, int] = None
+    path_to_ts_data: Union[str, Path]
+    path_to_xml_data: Optional[Union[str, Path]] = None
+    path_to_mdoc_data: Optional[Union[str, Path]] = None
+    path_to_tomostar: Optional[Union[str, Path]] = None
+    basename: str
+    tilt_name: Optional[str] = None
+    rawtlt: Optional[str] = None
+    mdoc: Optional[str] = None
+    xml: Optional[str] = None
+    tomostar: Optional[str] = None
+    tilt_axis_ang: Union[str, float]
+    binval: Union[str, int]
+    z_height: Optional[Union[str, int]] = None
+    extension: Optional[str] = None
+    patch_size: Union[str, int]
     tilt_frames: List[str] = []
-    tilt_angles: List[float] = []
-    tilt_dir_name: Path = None
-    path_to_tomostar: Union[str, Path] = None
-    tomostar: str = None
+    tilt_angles: Union[List[float], np.ndarray] = []
+    tilt_dir_name: Optional[Path] = None
     axis_angles: List[float] = []
+    doses: List[float] = []
+    use_tilt: List[bool] = []  # New attribute for UseTilt from XML
+    axis_offset_x: List[float] = []  # New attribute from XML
+    axis_offset_y: List[float] = []  # New attribute from XML
+    plane_normal: Optional[str] = None  # New attribute from XML
+    magnification_correction: Optional[str] = None  # New attribute from XML
+    unselect_filter: Optional[bool] = None  # New attribute from XML
+    unselect_manual: Optional[str] = None  # New attribute from XML
+    ctf_resolution_estimate: Optional[float] = None  # New attribute from XML
 
+    class Config:
+        arbitrary_types_allowed = True
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.path_to_ts_data and self.basename:
+            self.tilt_dir_name = Path(self.path_to_ts_data) / self.basename
+            self.get_extension()
+            self.tilt_name = f"{self.basename}.{self.extension}" if self.extension else None
+            self.rawtlt = f'{self.basename}.rawtlt'
+            self.mdoc = f'{self.basename}.mdoc'
+            self.xml = f'{self.basename}.xml'
+            self.tomostar = f'{self.basename}.tomostar'
+        if self.path_to_tomostar:
+            self.read_tomostar_file()
+        else:
+            self.read_rawtlt_file()
+        self.read_mdoc_file()
+        if self.path_to_xml_data:
+            self.read_xml_file()
     def __init__(self, **data):
         super().__init__(**data)
         # self.get_extension()
@@ -77,10 +108,10 @@ class TiltSeries(BaseModel):
                 sorted_md = md.sort_values("TiltAngle", ascending=ascending)
                 sorted_md["TiltAngle"] = sorted_md["TiltAngle"].round(2)
                 filtered_df = sorted_md[sorted_md["TiltAngle"].isin(np.round(self.tilt_angles, 2))]
-                print(f"Filtered dataframe: {filtered_df}")  # Debug print
+                #print(f"Filtered dataframe: {filtered_df}")  # Debug print
                 # Note: We're not overwriting self.tilt_frames here, as we're using the tomostar data
                 mdoc_tilt_frames = filtered_df["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
-                print(f"Tilt frames from MDOC: {mdoc_tilt_frames}")  # Debug print
+                #print(f"Tilt frames from MDOC: {mdoc_tilt_frames}")  # Debug print
             else:
                 print("No tilt angles found.")  # Debug print
         else:
@@ -135,6 +166,30 @@ class TiltSeries(BaseModel):
                 if index < len(self.tilt_angles):
                     del self.tilt_angles[index]
 
+    def read_xml_file(self):
+        xml_path = Path(self.path_to_xml_data) / self.xml if self.path_to_xml_data and self.xml else None
+        if xml_path and xml_path.exists():
+            try:
+                tree = ET.parse(xml_path)
+                root = tree.getroot()
+
+                # Parse XML attributes
+                self.plane_normal = root.get('PlaneNormal')
+                self.magnification_correction = root.get('MagnificationCorrection')
+                self.unselect_filter = root.get('UnselectFilter') == 'True'
+                self.unselect_manual = root.get('UnselectManual')
+                self.ctf_resolution_estimate = float(root.get('CTFResolutionEstimate', 0))
+
+                # Parse XML elements
+                self.use_tilt = [x.lower() == 'true' for x in root.find('UseTilt').text.split()]
+                self.axis_offset_x = [float(x) for x in root.find('AxisOffsetX').text.split()]
+                self.axis_offset_y = [float(x) for x in root.find('AxisOffsetY').text.split()]
+
+                print("Successfully parsed XML file.")
+            except Exception as e:
+                print(f"Error reading XML file: {e}")
+        else:
+            print(f"Could not find {self.xml} in {self.path_to_xml_data}.")
 
 class Tomogram(BaseModel):
     path_to_data: Union[str, Path] = None
