@@ -206,10 +206,6 @@ def update_warp_xml(ts_basename: str = typer.Option(..., help="Basename of the t
         return
 
     tomostar_data = starfile.read(tomostar_file)
-
-    if not isinstance(tomostar_data, dict) or 'wrpMovieName' not in tomostar_data:
-        print(f"Error: Invalid tomostar file format or missing 'wrpMovieName' column.")
-        return
     good_mask = ~tomostar_data['wrpMovieName'].apply(lambda x: Path(x).stem).isin(bad_frames)
     updated_tomostar_data = {col: tomostar_data[col][good_mask] for col in tomostar_data.keys()}
     starfile.write(updated_tomostar_data, tomostar_file, overwrite=True)

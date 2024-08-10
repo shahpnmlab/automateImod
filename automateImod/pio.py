@@ -111,7 +111,8 @@ class TiltSeries(BaseModel):
                 filtered_df = sorted_md[sorted_md["TiltAngle"].isin(np.round(self.tilt_angles, 2))]
                 #print(f"Filtered dataframe: {filtered_df}")  # Debug print
                 if "SubFramePath" in filtered_df.columns:
-                    self.tilt_frames = filtered_df["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
+                    self.tilt_frames = filtered_df["SubFramePath"].apply(lambda x: Path(x).stem).to_list()
+                    print(self.tilt_frames) #Debug print
                 #print(f"Tilt frames from MDOC: {self.tilt_frames}")  # Debug print
             else:
                 print("No tilt angles found in tomostar file. Using all frames from MDOC.")
