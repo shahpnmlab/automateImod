@@ -49,13 +49,12 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
             print(f"Marker file not detected in {marker_file.parent}\nProcessing...")
             print("Looking for dark tilts...")
 
-            dark_frame_indices = utils.detect_dark_tilts(ts_data=im_data, ts_tilt_angles=ts.read_rawtlt_file())
+            dark_frame_indices = utils.detect_dark_tilts(ts_data=im_data, ts_tilt_angles=ts.tilt_angles)
 
             if len(dark_frame_indices) > 0:
                 print(f'Detected {len(dark_frame_indices)} dark tilts in {ts.basename}')
                 print(f'Removing dark tilts...')
                 utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=dark_frame_indices)
-                #ts.remove_frames(dark_frame_indices)
                 del im_data
                 im_data, pixel_nm, dimX, dimY = pio.read_mrc(ts_path)
             else:
@@ -66,8 +65,24 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
 
             with open(marker_file, "w") as fout:
                 fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
-                # for idx, value in enumerate(dark_frame_indices):
-                #     fout.write(f"{ts.tilt_frames[value]},{ts.tilt_angles[value]},{dark_frame_indices[idx]}\n")
+
+            large_shift_indices = utils.detect_large_shifts_afterxcorr(f'{ts.tilt_dir_name}/{ts.basename}.prexg')
+
+            if len(large_shift_indices) > 0:
+                print(f'Detected {len(large_shift_indices)} badly tracking tilts in {ts.basename}')
+                print(f'Removing badly tracked tilts...')
+                utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=large_shift_indices)
+                print(f"Redoing coarse alignment with decimated {ts.basename} stack")
+
+                coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
+                coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
+
+                with open(marker_file, "a") as fout:
+                    for idx, value in enumerate(large_shift_indices):
+                        if idx < len(ts.tilt_frames):
+                            fout.write(f"{ts.tilt_frames[idx]},{ts.tilt_angles[idx]},{large_shift_indices[idx]}\n")
+                        else:
+                            print(f"Warning: Index {idx} is out of range for tilt_frames or tilt_angles.")
 
             large_shift_indices = utils.detect_large_shifts_afterxcorr(f'{ts.tilt_dir_name}/{ts.basename}.prexg')
 
