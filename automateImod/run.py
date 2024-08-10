@@ -17,6 +17,7 @@ automateImod = typer.Typer()
 def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename e.g. Position_1"),
                 ts_data_path: Path = typer.Option(..., help="directory containing tilt series data"),
                 ts_mdoc_path: Path = typer.Option(None, help="directory containing the tilt series mdoc file"),
+                ts_tomostar_path: Path = typer.Option(None, help="directory containing the tomostar file"),
                 ts_tilt_axis: str = typer.Option(..., help="tilt axis value"),
                 ts_bin: str = typer.Option(..., help="bin value to reduce the tilt series size by."),
                 ts_patch_size: str = typer.Option(..., help="Size of patches to perform patch_tracking")):
@@ -24,8 +25,10 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
     Perform patch-based tilt series tracking using IMOD routines
     """
     # Initialise a TS object with user inputs
-    ts = pio.TiltSeries(path_to_ts_data=ts_data_path, path_to_mdoc_data=ts_mdoc_path, basename=ts_basename,
+    ts = pio.TiltSeries(path_to_ts_data=ts_data_path, path_to_mdoc_data=ts_mdoc_path,
+                        path_to_tomostar=ts_tomostar_path, basename=ts_basename,
                         tilt_axis_ang=ts_tilt_axis, binval=ts_bin, patch_size=ts_patch_size)
+
     ts_path = ts.get_mrc_path()
     marker_file = ts.tilt_dir_name / "autoImod.marker"
 

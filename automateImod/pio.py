@@ -39,8 +39,10 @@ class TiltSeries(BaseModel):
             self.mdoc = f'{self.basename}.mdoc'
             self.xml = f'{self.basename}.xml'
             self.tomostar = f'{self.basename}.tomostar'
-        self.read_tomostar_file()  # Replace read_rawtlt_file() with this
-        # self.tilt_angles = self.read_rawtlt_file()
+        if self.path_to_tomostar:
+            self.read_tomostar_file()
+        else:
+            self.read_rawtlt_file()
         self.read_mdoc_file()
 
     def get_extension(self):
@@ -107,15 +109,12 @@ class TiltSeries(BaseModel):
             print(f"Could not find {self.tomostar} in {self.path_to_tomostar}.")
 
     def read_rawtlt_file(self):
-        tilt_angles = []
-        if self.rawtlt:
-            rawtlt_path = self.get_rawtlt_path()
-            if rawtlt_path.exists():
-                tilt_angles = np.round(np.loadtxt(rawtlt_path),decimals=1)
-
-            else:
-                print(f"Could not find {self.rawtlt} in {rawtlt_path}.")
-        return tilt_angles
+        rawtlt_path = self.get_rawtlt_path()
+        if rawtlt_path and rawtlt_path.exists():
+            self.tilt_angles = np.loadtxt(rawtlt_path)
+            print(f"Tilt angles from rawtlt: {self.tilt_angles}")
+        else:
+            print(f"Could not find {self.rawtlt} in {self.tilt_dir_name}.")
 
     def remove_frames(self, indices: List[int]):
         """
