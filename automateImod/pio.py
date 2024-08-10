@@ -96,12 +96,12 @@ class TiltSeries(BaseModel):
                 self.tilt_frames = [Path(frame).stem for frame in tomostar_data['wrpMovieName']]
                 self.tilt_angles = np.array(tomostar_data['wrpAngleTilt'])
 
-                print(f"Tilt angles from tomostar: {self.tilt_angles}")
-                print(f"Tilt frames from tomostar: {self.tilt_frames}")
+                # print(f"Tilt angles from tomostar: {self.tilt_angles}")
+                # print(f"Tilt frames from tomostar: {self.tilt_frames}")
 
                 # You can also extract other useful information if needed
-                self.axis_angles = tomostar_data['_wrpAxisAngle']
-                self.doses = tomostar_data['_wrpDose']
+                self.axis_angles = tomostar_data['wrpAxisAngle']
+                self.doses = tomostar_data['wrpDose']
 
             except Exception as e:
                 print(f"Error reading tomostar file: {e}")
@@ -112,7 +112,7 @@ class TiltSeries(BaseModel):
         rawtlt_path = self.get_rawtlt_path()
         if rawtlt_path and rawtlt_path.exists():
             self.tilt_angles = np.loadtxt(rawtlt_path)
-            print(f"Tilt angles from rawtlt: {self.tilt_angles}")
+            # print(f"Tilt angles from rawtlt: {self.tilt_angles}")
         else:
             print(f"Could not find {self.rawtlt} in {self.tilt_dir_name}.")
 
