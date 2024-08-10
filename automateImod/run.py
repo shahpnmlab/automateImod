@@ -85,25 +85,6 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
                         else:
                             print(f"Warning: Index {idx} is out of range for tilt_angles.")
 
-            large_shift_indices = utils.detect_large_shifts_afterxcorr(f'{ts.tilt_dir_name}/{ts.basename}.prexg')
-
-            if len(large_shift_indices) > 0:
-                print(f'Detected {len(large_shift_indices)} badly tracking tilts in {ts.basename}')
-                print(f'Removing badly tracked tilts...')
-                utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=large_shift_indices)
-                print(f"Redoing coarse alignment with decimated {ts.basename} stack")
-
-                coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
-                coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
-
-                with open(marker_file, "a") as fout:
-                    for idx, value in enumerate(large_shift_indices):
-                        if ts.tilt_frames:  # Check if tilt_frames is not empty
-                            frame_name = ts.tilt_frames[value] if value < len(ts.tilt_frames) else f"frame_{value}"
-                        else:
-                            frame_name = f"frame_{value}"
-                        fout.write(f"{frame_name},{ts.tilt_angles[value]},{large_shift_indices[idx]}\n")
-
         print(f"Performing patch-based alignment on {ts.basename}")
         coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_patch.com', capture_output=False)
         coms.execute_com_file(f'{str(ts.tilt_dir_name)}/align_patch.com', capture_output=False)
