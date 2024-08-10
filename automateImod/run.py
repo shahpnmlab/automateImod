@@ -94,11 +94,16 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
         utils.write_ta_coords_log(tilt_dir_name=ts.tilt_dir_name)
 
         known_to_unknown, resid_error, sd = utils.get_alignment_error(ts.tilt_dir_name)
-        print(f"Residual error (nm): {resid_error}")
+
+        if resid_error is not None:
+            print(f"Residual error (nm): {resid_error}")
+        else:
+            print("Could not retrieve alignment statistics. The alignment may have failed.")
+            return
 
         total_tries = 3
         attempt = 0
-        if known_to_unknown > 10 and resid_error >= 1.5:
+        if known_to_unknown is not None and resid_error is not None and known_to_unknown > 10 and resid_error >= 1.5:
             print(f"The alignment statistics for {ts.basename} are worse than expected.")
             print(f"Will try to improve the alignments in {total_tries} attempts.")
             while attempt < total_tries:
@@ -108,17 +113,22 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
                 coms.execute_com_file(f'{str(ts.tilt_dir_name)}/align_patch.com', capture_output=False)
                 utils.write_ta_coords_log(tilt_dir_name=ts.tilt_dir_name)
                 attempt += 1
-                # Retrieve alignment statistics after improvement
                 known_to_unknown, resid_error, sd = utils.get_alignment_error(ts.tilt_dir_name)
-                print(f"Residual error (nm): {resid_error}")
-                # Break the loop if the condition is no longer met
-                if not (known_to_unknown > 10 and resid_error >= 1.5):
+                if resid_error is not None:
+                    print(f"Residual error (nm): {resid_error}")
+                else:
+                    print("Could not retrieve alignment statistics.")
+                if not (
+                        known_to_unknown is not None and resid_error is not None and known_to_unknown > 10 and resid_error >= 1.5):
                     break
-            # Check if attempts were exhausted
             if attempt == total_tries:
-                print("Maximum number of realignment attempts reached. \n"
-                      "The final alignment accuracy is: \n"
-                      f"Residual error (nm): {resid_error} (SD: {sd})")
+                print("Maximum number of realignment attempts reached.")
+
+        if resid_error is not None:
+            print(f"The final alignment accuracy is:")
+            print(f"Residual error (nm): {resid_error} (SD: {sd})")
+        else:
+            print("Could not retrieve final alignment statistics.")
     else:
         raise FileNotFoundError(f"No valid tilt series found at {ts_path}. Aborting.")
 

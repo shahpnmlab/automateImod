@@ -46,15 +46,28 @@ def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
 
 
 def get_alignment_error(tilt_dir_name):
-    with open(f'{tilt_dir_name}/align_patch.log', 'r') as f_in:
-        for line in f_in:
-            if "Ratio of total measured values to all unknowns" in line:
-                known_unknown_ratio = float(line.split("=")[-1])
-            if "Residual error mean and sd" in line:
-                a1 = line.split()
-                resid_err = float(a1[5])
-                sd = a1[6]
-    return known_unknown_ratio, resid_err, sd
+    known_unknown_ratio = None
+    resid_err = None
+    sd = None
+
+    try:
+        with open(f'{tilt_dir_name}/align_patch.log', 'r') as f_in:
+            for line in f_in:
+                if "Ratio of total measured values to all unknowns" in line:
+                    known_unknown_ratio = float(line.split("=")[-1])
+                if "Residual error mean and sd" in line:
+                    a1 = line.split()
+                    resid_err = float(a1[5])
+                    sd = a1[6]
+
+        if known_unknown_ratio is None or resid_err is None or sd is None:
+            print("Warning: Could not find all alignment statistics in the log file.")
+
+        return known_unknown_ratio, resid_err, sd
+
+    except Exception as e:
+        print(f"Error reading alignment log: {e}")
+        return None, None, None
 
 
 def write_ta_coords_log(tilt_dir_name):

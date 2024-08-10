@@ -26,6 +26,7 @@ class TiltSeries(BaseModel):
     tilt_dir_name: Path = None
     path_to_tomostar: Union[str, Path] = None
     tomostar: str = None
+    axis_angles: List[float] = []
 
     def __init__(self, **data):
         super().__init__(**data)
