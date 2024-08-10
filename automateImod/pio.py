@@ -1,4 +1,5 @@
 import mrcfile
+import starfile
 import mdocfile
 import numpy as np
 from pathlib import Path, PureWindowsPath
@@ -23,6 +24,8 @@ class TiltSeries(BaseModel):
     tilt_frames: List[str] = []
     tilt_angles: List[float] = []
     tilt_dir_name: Path = None
+    path_to_tomostar: Union[str, Path] = None
+    tomostar: str = None
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -35,7 +38,9 @@ class TiltSeries(BaseModel):
             self.rawtlt = f'{self.basename}.rawtlt'
             self.mdoc = f'{self.basename}.mdoc'
             self.xml = f'{self.basename}.xml'
-        self.tilt_angles = self.read_rawtlt_file()
+            self.tomostar = f'{self.basename}.tomostar'
+        self.read_tomostar_file()  # Replace read_rawtlt_file() with this
+        # self.tilt_angles = self.read_rawtlt_file()
         self.read_mdoc_file()
 
     def get_extension(self):
@@ -63,16 +68,43 @@ class TiltSeries(BaseModel):
         mdoc_path = self.get_mdoc_path()
         if mdoc_path and mdoc_path.exists():
             md = mdocfile.read(mdoc_path)
+            #print(f"MDOC contents: {md}")  # Debug print
             if len(self.tilt_angles):
-                # Determine the sorting order (ascending or descending)
                 ascending = self.tilt_angles[0] < self.tilt_angles[-1]
-                # Sort the mdoc data to match the tilt_angles order
                 sorted_md = md.sort_values("TiltAngle", ascending=ascending)
-                sorted_md["TiltAngle"] = sorted_md["TiltAngle"].round(1)
-                filtered_df = sorted_md[sorted_md["TiltAngle"].isin(self.tilt_angles)]
-                self.tilt_frames = filtered_df["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
+                sorted_md["TiltAngle"] = sorted_md["TiltAngle"].round(2)
+                filtered_df = sorted_md[sorted_md["TiltAngle"].isin(np.round(self.tilt_angles, 2))]
+                print(f"Filtered dataframe: {filtered_df}")  # Debug print
+                # Note: We're not overwriting self.tilt_frames here, as we're using the tomostar data
+                mdoc_tilt_frames = filtered_df["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
+                print(f"Tilt frames from MDOC: {mdoc_tilt_frames}")  # Debug print
+            else:
+                print("No tilt angles found.")  # Debug print
         else:
             print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
+
+    def read_tomostar_file(self):
+        tomostar_path = Path(self.path_to_tomostar) / self.tomostar if self.path_to_tomostar and self.tomostar else None
+        if tomostar_path and tomostar_path.exists():
+            try:
+                # Read the tomostar file using starfile
+                tomostar_data = starfile.read(tomostar_path)
+
+                # Extract the relevant columns
+                self.tilt_frames = [Path(frame).stem for frame in tomostar_data['_wrpMovieName']]
+                self.tilt_angles = np.array(tomostar_data['_wrpAngleTilt'])
+
+                print(f"Tilt angles from tomostar: {self.tilt_angles}")
+                print(f"Tilt frames from tomostar: {self.tilt_frames}")
+
+                # You can also extract other useful information if needed
+                self.axis_angles = tomostar_data['_wrpAxisAngle']
+                self.doses = tomostar_data['_wrpDose']
+
+            except Exception as e:
+                print(f"Error reading tomostar file: {e}")
+        else:
+            print(f"Could not find {self.tomostar} in {self.path_to_tomostar}.")
 
     def read_rawtlt_file(self):
         tilt_angles = []
@@ -91,8 +123,8 @@ class TiltSeries(BaseModel):
         """
         if isinstance(self.tilt_angles, np.ndarray):
             # Use numpy.delete to remove elements from numpy arrays
-            self.tilt_angles = np.delete(self.tilt_angles, indices)
             # For tilt_frames, since it's a list, first ensure it's a numpy array, perform deletion, then convert back if necessary
+            self.tilt_angles = np.delete(self.tilt_angles, indices)
             self.tilt_frames = np.delete(np.array(self.tilt_frames), indices).tolist()
         else:
             # If tilt_angles is somehow not a numpy array, revert to list-based removal
@@ -136,3 +168,10 @@ if __name__ == '__main__':
                    tilt_axis_ang="84.7",
                    patch_size="350")
     print(a.read_rawtlt_file())
+
+
+
+
+"""
+align-tilts --ts-data-path tiltstack  --ts-mdoc-path tiltstack/mdocs --ts-basename lamella9_ts_002 --ts-bin 6 --ts-patch-size 300 --ts-tilt-axis 84.7
+"""

@@ -106,7 +106,7 @@ def improve_bad_alignments(tilt_dir_name, tilt_name):
     subprocess.run(point_to_model_cmd)
 
 
-def detect_dark_tilts(ts_data, ts_tilt_angles, brightness_factor=0.65, variance_factor=0.5):
+def detect_dark_tilts(ts_data, ts_tilt_angles, brightness_factor=0.65, variance_factor=0.1):
     # Identify the reference image, typically at or near 0 tilt
     tilt_series_mid_point_idx = calc.find_symmetric_tilt_reference(ts_tilt_angles)
     normalized_images = calc.normalize(ts_data)

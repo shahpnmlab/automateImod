@@ -53,7 +53,7 @@ def align_tilts(ts_data_path: Path = typer.Option(..., help="directory containin
                 print(f'Detected {len(dark_frame_indices)} dark tilts in {ts.basename}')
                 print(f'Removing dark tilts...')
                 utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=dark_frame_indices)
-                ts.remove_frames(dark_frame_indices)
+                #ts.remove_frames(dark_frame_indices)
                 del im_data
                 im_data, pixel_nm, dimX, dimY = pio.read_mrc(ts_path)
             else:
@@ -64,8 +64,8 @@ def align_tilts(ts_data_path: Path = typer.Option(..., help="directory containin
 
             with open(marker_file, "w") as fout:
                 fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
-                for idx, value in enumerate(dark_frame_indices):
-                    fout.write(f"{ts.tilt_frames[value]},{ts.tilt_angles[value]},{dark_frame_indices[idx]}\n")
+                # for idx, value in enumerate(dark_frame_indices):
+                #     fout.write(f"{ts.tilt_frames[value]},{ts.tilt_angles[value]},{dark_frame_indices[idx]}\n")
 
             large_shift_indices = utils.detect_large_shifts_afterxcorr(f'{ts.tilt_dir_name}/{ts.basename}.prexg')
 
@@ -80,7 +80,11 @@ def align_tilts(ts_data_path: Path = typer.Option(..., help="directory containin
 
                 with open(marker_file, "a") as fout:
                     for idx, value in enumerate(large_shift_indices):
-                        fout.write(f"{ts.tilt_frames[value]},{ts.tilt_angles[value]},{large_shift_indices[idx]}\n")
+                        if ts.tilt_frames:  # Check if tilt_frames is not empty
+                            frame_name = ts.tilt_frames[value] if value < len(ts.tilt_frames) else f"frame_{value}"
+                        else:
+                            frame_name = f"frame_{value}"
+                        fout.write(f"{frame_name},{ts.tilt_angles[value]},{large_shift_indices[idx]}\n")
 
         print(f"Performing patch-based alignment on {ts.basename}")
         coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_patch.com', capture_output=False)
