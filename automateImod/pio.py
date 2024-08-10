@@ -93,8 +93,8 @@ class TiltSeries(BaseModel):
                 tomostar_data = starfile.read(tomostar_path)
 
                 # Extract the relevant columns
-                self.tilt_frames = [Path(frame).stem for frame in tomostar_data['_wrpMovieName']]
-                self.tilt_angles = np.array(tomostar_data['_wrpAngleTilt'])
+                self.tilt_frames = [Path(frame).stem for frame in tomostar_data['wrpMovieName']]
+                self.tilt_angles = np.array(tomostar_data['wrpAngleTilt'])
 
                 print(f"Tilt angles from tomostar: {self.tilt_angles}")
                 print(f"Tilt frames from tomostar: {self.tilt_frames}")
