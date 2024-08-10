@@ -47,7 +47,7 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
 
         original_tilt_frames = ts.tilt_frames.copy()
         original_tilt_angles = ts.tilt_angles.copy()
-        removed_indices = []
+
         if not marker_file.exists():
             marker_file.touch()
             print(f"Marker file not detected in {marker_file.parent}\nProcessing...")
@@ -59,7 +59,7 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
                 print(f'Detected {len(dark_frame_indices)} dark tilts in {ts.basename}')
                 print(f'Removing dark tilts...')
                 utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=dark_frame_indices)
-                removed_indices.extend(dark_frame_indices)
+                ts.removed_indices.extend(dark_frame_indices)
                 del im_data
                 im_data, pixel_nm, dimX, dimY = pio.read_mrc(ts_path)
             else:
@@ -87,7 +87,7 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
                                                 for idx in large_shift_indices]
 
                 utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=large_shift_indices)
-                removed_indices.extend(original_large_shift_indices)
+                ts.removed_indices.extend(original_large_shift_indices)
                 print(f"Redoing coarse alignment with decimated {ts.basename} stack")
 
                 coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
@@ -102,8 +102,8 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
                         else:
                             print(f"Warning: Index {idx} is out of range for original tilt_angles or tilt_frames.")
 
-        # After all tilt removals, update the ts object with the final list of removed indices
-        ts.removed_indices = sorted(set(removed_indices))
+        # After all tilt removals, ensure the removed_indices are unique and sorted
+        ts.removed_indices = sorted(set(ts.removed_indices))
 
         print(f"Performing patch-based alignment on {ts.basename}")
         coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_patch.com', capture_output=False)

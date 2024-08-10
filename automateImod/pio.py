@@ -34,10 +34,11 @@ class TiltSeries(BaseModel):
     axis_offset_x: List[float] = []  # New attribute from XML
     axis_offset_y: List[float] = []  # New attribute from XML
     plane_normal: Optional[str] = None  # New attribute from XML
-    magnification_correction: Optional[str] = None  # New attribute from XML
-    unselect_filter: Optional[bool] = None  # New attribute from XML
-    unselect_manual: Optional[str] = None  # New attribute from XML
-    ctf_resolution_estimate: Optional[float] = None  # New attribute from XML
+    magnification_correction: Optional[str] = None
+    unselect_filter: Optional[bool] = None
+    unselect_manual: Optional[str] = None
+    ctf_resolution_estimate: Optional[float] = None
+    removed_indices: Optional[List[int]] = []
 
     class Config:
         arbitrary_types_allowed = True
