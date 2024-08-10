@@ -53,26 +53,54 @@ class TiltSeries(BaseModel):
             self.mdoc = f'{self.basename}.mdoc'
             self.xml = f'{self.basename}.xml'
             self.tomostar = f'{self.basename}.tomostar'
-        if self.path_to_tomostar:
-            self.read_tomostar_file()
-        self.read_rawtlt_file()
-        self.read_mdoc_file()
+            # Initialize tilt_frames and tilt_angles as empty
+            self.tilt_frames = []
+            self.tilt_angles = []
+
+            # Read files in order of priority
+            self.read_rawtlt_file()  # Base tilt angles
+            self.read_mdoc_file()  # May update tilt_frames if tomostar not available
+            if self.path_to_tomostar:
+                self.read_tomostar_file()  # Overwrites tilt_frames and tilt_angles if available
 
     def read_tomostar_file(self):
         tomostar_path = Path(self.path_to_tomostar) / self.tomostar if self.path_to_tomostar and self.tomostar else None
         if tomostar_path and tomostar_path.exists():
             try:
                 tomostar_data = starfile.read(tomostar_path)
-                self.tilt_frames = [Path(frame).stem for frame in tomostar_data['wrpMovieName']]
+
+                # Convert wrpMovieName entries to Path objects and extract filenames
+                self.tilt_frames = [Path(movie_name).name for movie_name in tomostar_data['wrpMovieName']]
                 self.tilt_angles = np.array(tomostar_data['wrpAngleTilt'])
                 self.axis_angles = tomostar_data['wrpAxisAngle']
                 self.doses = tomostar_data['wrpDose']
+
+                print(f"Processed {len(self.tilt_frames)} tilt frames from tomostar file.")
+                print(f"Sample processed filename: {self.tilt_frames[0]}")
             except KeyError as e:
                 print(f"Error reading tomostar file: Missing key {e}")
             except Exception as e:
                 print(f"Error reading tomostar file: {e}")
         else:
             print(f"Could not find {self.tomostar} in {self.path_to_tomostar}.")
+
+    def read_rawtlt_file(self):
+        rawtlt_path = self.get_rawtlt_path()
+        if rawtlt_path and rawtlt_path.exists():
+            self.tilt_angles = np.loadtxt(rawtlt_path)
+            print(f"Loaded {len(self.tilt_angles)} tilt angles from rawtlt file.")
+        else:
+            print(f"Could not find {self.rawtlt} in {self.tilt_dir_name}.")
+
+    def read_mdoc_file(self):
+        mdoc_path = self.get_mdoc_path()
+        if mdoc_path and mdoc_path.exists():
+            md = mdocfile.read(mdoc_path)
+            if not self.tilt_frames:  # Only update if tilt_frames is empty
+                self.tilt_frames = md["SubFramePath"].apply(lambda x: Path(x).name).tolist()
+            print(f"Processed {len(self.tilt_frames)} tilt frames from mdoc file.")
+        else:
+            print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
 
     def get_extension(self):
         if self.tilt_dir_name:  # Ensure tilt_dir_name is not None
@@ -94,36 +122,6 @@ class TiltSeries(BaseModel):
 
     def get_rawtlt_path(self):
         return Path(self.tilt_dir_name) / self.rawtlt if self.path_to_ts_data and self.rawtlt else None
-
-    def read_mdoc_file(self):
-        mdoc_path = self.get_mdoc_path()
-        if mdoc_path and mdoc_path.exists():
-            md = mdocfile.read(mdoc_path)
-            #print(f"MDOC contents: {md}")  # Debug print
-            if len(self.tilt_angles) > 0:
-                ascending = self.tilt_angles[0] < self.tilt_angles[-1]
-                sorted_md = md.sort_values("TiltAngle", ascending=ascending)
-                sorted_md["TiltAngle"] = sorted_md["TiltAngle"].round(2)
-                filtered_df = sorted_md[sorted_md["TiltAngle"].isin(np.round(self.tilt_angles, 2))]
-                #print(f"Filtered dataframe: {filtered_df}")  # Debug print
-                if "SubFramePath" in filtered_df.columns:
-                    self.tilt_frames = filtered_df["SubFramePath"].apply(lambda x: Path(x).stem).to_list()
-                    print(self.tilt_frames) #Debug print
-                #print(f"Tilt frames from MDOC: {self.tilt_frames}")  # Debug print
-            else:
-                print("No tilt angles found in tomostar file. Using all frames from MDOC.")
-                self.tilt_angles = md["TiltAngle"].values
-                self.tilt_frames = md["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
-        else:
-            print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
-
-    def read_rawtlt_file(self):
-        rawtlt_path = self.get_rawtlt_path()
-        if rawtlt_path and rawtlt_path.exists():
-            self.tilt_angles = np.loadtxt(rawtlt_path)
-            # print(f"Tilt angles from rawtlt: {self.tilt_angles}")
-        else:
-            print(f"Could not find {self.rawtlt} in {self.tilt_dir_name}.")
 
     def remove_frames(self, indices: List[int]):
         """
