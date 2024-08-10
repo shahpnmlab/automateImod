@@ -7,6 +7,7 @@ import automateImod.utils as utils
 import automateImod.pio as pio
 import xml.etree.ElementTree as ET
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 automateImod = typer.Typer()
@@ -22,6 +23,7 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
     """
     Perform patch-based tilt series tracking using IMOD routines
     """
+
     # Initialise a TS object with user inputs
     ts = pio.TiltSeries(path_to_ts_data=ts_data_path, path_to_mdoc_data=ts_mdoc_path,
                         path_to_tomostar=ts_tomostar_path, basename=ts_basename,
@@ -29,6 +31,7 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
 
     ts_path = ts.get_mrc_path()
     marker_file = ts.tilt_dir_name / "autoImod.marker"
+
 
     if ts_path.is_file():
         im_data, pixel_nm, dimX, dimY = pio.read_mrc(ts_path)
@@ -42,6 +45,9 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
         coms.track_patch_com(tilt_dir_name=ts.tilt_dir_name, tilt_name=ts.basename, pixel_nm=pixel_nm, binval=ts.binval,
                              tilt_axis_ang=ts.tilt_axis_ang, dimX=dimX, dimY=dimY)
 
+        original_tilt_frames = ts.tilt_frames.copy()
+        original_tilt_angles = ts.tilt_angles.copy()
+        removed_indices = []
         if not marker_file.exists():
             marker_file.touch()
             print(f"Marker file not detected in {marker_file.parent}\nProcessing...")
@@ -53,20 +59,19 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
                 print(f'Detected {len(dark_frame_indices)} dark tilts in {ts.basename}')
                 print(f'Removing dark tilts...')
                 utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=dark_frame_indices)
+                removed_indices.extend(dark_frame_indices)
                 del im_data
                 im_data, pixel_nm, dimX, dimY = pio.read_mrc(ts_path)
-
-                # Write dark frames to marker file
-                with open(marker_file, "w") as fout:
-                    fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
-                    for idx in dark_frame_indices:
-                        if idx < len(ts.tilt_angles) and idx < len(ts.tilt_frames):
-                            frame_name = Path(ts.tilt_frames[idx]).stem
-                            fout.write(f"{frame_name},{ts.tilt_angles[idx]},{idx}\n")
-                        else:
-                            print(f"Warning: Index {idx} is out of range for tilt_angles or tilt_frames.")
             else:
                 print("No dark frames found in the current tilt series. Proceeding with coarse alignments...")
+
+            # Write marker file (even if no dark frames were detected)
+            with open(marker_file, "w") as fout:
+                fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
+                for idx in dark_frame_indices:  # This will be empty if no dark frames were detected
+                    if idx < len(original_tilt_angles) and idx < len(original_tilt_frames):
+                        frame_name = Path(original_tilt_frames[idx]).stem
+                        fout.write(f"{frame_name},{original_tilt_angles[idx]},{idx}\n")
 
             coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
             coms.execute_com_file(f'{str(ts.tilt_dir_name)}/newst_coarse.com', capture_output=False)
@@ -76,7 +81,13 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
             if len(large_shift_indices) > 0:
                 print(f'Detected {len(large_shift_indices)} badly tracking tilts in {ts.basename}')
                 print(f'Removing badly tracked tilts...')
+
+                # Convert decimated stack indices to original stack indices
+                original_large_shift_indices = [np.where(np.array(original_tilt_angles) == ts.tilt_angles[idx])[0][0]
+                                                for idx in large_shift_indices]
+
                 utils.remove_bad_tilts(ts=ts, im_data=im_data, pixel_nm=pixel_nm, bad_idx=large_shift_indices)
+                removed_indices.extend(original_large_shift_indices)
                 print(f"Redoing coarse alignment with decimated {ts.basename} stack")
 
                 coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_coarse.com', capture_output=False)
@@ -84,12 +95,15 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
 
                 # Append large shift frames to marker file
                 with open(marker_file, "a") as fout:
-                    for idx in large_shift_indices:
-                        if idx < len(ts.tilt_angles) and idx < len(ts.tilt_frames):
-                            frame_name = Path(ts.tilt_frames[idx]).stem
-                            fout.write(f"{frame_name},{ts.tilt_angles[idx]},{idx}\n")
+                    for idx in original_large_shift_indices:
+                        if idx < len(original_tilt_angles) and idx < len(original_tilt_frames):
+                            frame_name = Path(original_tilt_frames[idx]).stem
+                            fout.write(f"{frame_name},{original_tilt_angles[idx]},{idx}\n")
                         else:
-                            print(f"Warning: Index {idx} is out of range for tilt_angles or tilt_frames.")
+                            print(f"Warning: Index {idx} is out of range for original tilt_angles or tilt_frames.")
+
+        # After all tilt removals, update the ts object with the final list of removed indices
+        ts.removed_indices = sorted(set(removed_indices))
 
         print(f"Performing patch-based alignment on {ts.basename}")
         coms.execute_com_file(f'{str(ts.tilt_dir_name)}/xcorr_patch.com', capture_output=False)

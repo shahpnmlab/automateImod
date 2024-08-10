@@ -57,6 +57,8 @@ def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
 
     # Update the TiltSeries object
     ts.tilt_angles = cleaned_ts_rawtlt
+    ts.removed_indices = sorted(set(ts.removed_indices + bad_idx)) if hasattr(ts, 'removed_indices') else sorted(
+        bad_idx)
 
 
 def get_alignment_error(tilt_dir_name):
