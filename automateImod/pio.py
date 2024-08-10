@@ -103,17 +103,19 @@ class TiltSeries(BaseModel):
         if mdoc_path and mdoc_path.exists():
             md = mdocfile.read(mdoc_path)
             #print(f"MDOC contents: {md}")  # Debug print
-            if len(self.tilt_angles):
+            if len(self.tilt_angles) > 0:
                 ascending = self.tilt_angles[0] < self.tilt_angles[-1]
                 sorted_md = md.sort_values("TiltAngle", ascending=ascending)
                 sorted_md["TiltAngle"] = sorted_md["TiltAngle"].round(2)
                 filtered_df = sorted_md[sorted_md["TiltAngle"].isin(np.round(self.tilt_angles, 2))]
                 #print(f"Filtered dataframe: {filtered_df}")  # Debug print
-                # Note: We're not overwriting self.tilt_frames here, as we're using the tomostar data
-                mdoc_tilt_frames = filtered_df["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
-                #print(f"Tilt frames from MDOC: {mdoc_tilt_frames}")  # Debug print
+                if "SubFramePath" in filtered_df.columns:
+                    self.tilt_frames = filtered_df["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
+                #print(f"Tilt frames from MDOC: {self.tilt_frames}")  # Debug print
             else:
-                print("No tilt angles found.")  # Debug print
+                print("No tilt angles found in tomostar file. Using all frames from MDOC.")
+                self.tilt_angles = md["TiltAngle"].values
+                self.tilt_frames = md["SubFramePath"].apply(lambda x: PureWindowsPath(x).stem).to_list()
         else:
             print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
 
@@ -127,14 +129,13 @@ class TiltSeries(BaseModel):
                 # Extract the relevant columns
                 self.tilt_frames = [Path(frame).stem for frame in tomostar_data['wrpMovieName']]
                 self.tilt_angles = np.array(tomostar_data['wrpAngleTilt'])
-
-                # print(f"Tilt angles from tomostar: {self.tilt_angles}")
-                # print(f"Tilt frames from tomostar: {self.tilt_frames}")
-
-                # You can also extract other useful information if needed
                 self.axis_angles = tomostar_data['wrpAxisAngle']
                 self.doses = tomostar_data['wrpDose']
 
+                # print(f"Tilt angles from tomostar: {self.tilt_angles}")
+                # print(f"Tilt frames from tomostar: {self.tilt_frames}")
+            except KeyError as e:
+                print(f"Error reading tomostar file: Missing key {e}")
             except Exception as e:
                 print(f"Error reading tomostar file: {e}")
         else:
