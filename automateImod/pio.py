@@ -1,7 +1,6 @@
 import mrcfile
 import starfile
 import mdocfile
-from pathlib import Path, PureWindowsPath
 import xml.etree.ElementTree as ET
 
 from pydantic import BaseModel
