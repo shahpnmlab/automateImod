@@ -12,14 +12,16 @@ from pathlib import Path
 
 automateImod = typer.Typer()
 
+
 @automateImod.command(no_args_is_help=True)
 def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename e.g. Position_1"),
                 ts_data_path: Path = typer.Option(..., help="directory containing tilt series data"),
                 ts_mdoc_path: Path = typer.Option(None, help="directory containing the tilt series mdoc file"),
                 ts_tomostar_path: Path = typer.Option(None, help="directory containing the tomostar file"),
                 ts_tilt_axis: str = typer.Option(..., help="tilt axis value"),
-                ts_bin: str = typer.Option(..., help="bin value to reduce the tilt series size by."),
-                ts_patch_size: str = typer.Option(..., help="Size of patches to perform patch_tracking")):
+                ts_bin: str = typer.Option(1, help="bin value to reduce the tilt series size by."),
+                ts_patch_size: str = typer.Option(..., help="Size of patches to perform patch_tracking (px)"),
+                max_attempts: int = typer.Option(3, help="How many attempts before quitting refinement")):
     """
     Perform patch-based tilt series tracking using IMOD routines
     """
@@ -31,7 +33,6 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
 
     ts_path = ts.get_mrc_path()
     marker_file = ts.tilt_dir_name / "autoImod.marker"
-
 
     if ts_path.is_file():
         im_data, pixel_nm, dimX, dimY = pio.read_mrc(ts_path)
@@ -118,7 +119,7 @@ def align_tilts(ts_basename: str = typer.Option(..., help="tilt series_basename 
             print("Could not retrieve alignment statistics. The alignment may have failed.")
             return
 
-        total_tries = 3
+        total_tries = max_attempts
         attempt = 0
         if known_to_unknown is not None and resid_error is not None and known_to_unknown > 10 and resid_error >= 1.5:
             print(f"The alignment statistics for {ts.basename} are worse than expected.")
