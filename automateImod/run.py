@@ -179,7 +179,7 @@ def update_warp_xml(ts_basename: str = typer.Option(..., help="Basename of the t
     tree = ET.parse(xml_file)
     root = tree.getroot()
 
-    elements_to_update = ['UseTilt', 'AxisAngle', 'AngleTilt', 'AxisOffsetX', 'AxisOffsetY', 'MoviePath']
+    elements_to_update = ['UseTilt', 'AxisAngle', 'Angles', 'AxisOffsetX', 'AxisOffsetY', 'MoviePath']
 
     for element_name in elements_to_update:
         element = root.find(element_name)
