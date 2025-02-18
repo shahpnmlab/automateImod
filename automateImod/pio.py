@@ -8,6 +8,7 @@ from typing import Union, List, Optional
 from pathlib import Path
 import numpy as np
 
+
 class TiltSeries(BaseModel):
     path_to_ts_data: Union[str, Path]
     path_to_xml_data: Optional[Union[str, Path]] = None
@@ -20,6 +21,7 @@ class TiltSeries(BaseModel):
     xml: Optional[str] = None
     tomostar: Optional[str] = None
     tilt_axis_ang: Union[str, float]
+    pixel_size: Union[str, float] = None
     binval: Union[str, int]
     z_height: Optional[Union[str, int]] = None
     extension: Optional[str] = None
@@ -46,35 +48,91 @@ class TiltSeries(BaseModel):
         super().__init__(**data)
         if self.path_to_ts_data and self.basename:
             self.tilt_dir_name = Path(self.path_to_ts_data) / self.basename
-            self.get_extension()
-            self.tilt_name = f"{self.basename}.{self.extension}" if self.extension else None
-            self.rawtlt = f'{self.basename}.rawtlt'
-            self.mdoc = f'{self.basename}.mdoc'
-            self.xml = f'{self.basename}.xml'
-            self.tomostar = f'{self.basename}.tomostar'
-            # Initialize tilt_frames and tilt_angles as empty
+            self.tilt_name = (
+                f"{self.basename}.{self.extension}" if self.extension else None
+            )
+            self.rawtlt = f"{self.basename}.rawtlt"
+            self.mdoc = f"{self.basename}.mdoc"
+            self.xml = f"{self.basename}.xml"
+            self.tomostar = f"{self.basename}.tomostar"
             self.tilt_frames = []
             self.tilt_angles = []
-
-            # Read files in order of priority
             self.read_rawtlt_file()  # Base tilt angles
+            self.get_extension()
             self.read_mdoc_file()  # May update tilt_frames if tomostar not available
+            self._get_pixel_size()
+            self._convert_patch_size()
+
             if self.path_to_tomostar:
                 self.read_tomostar_file()  # Overwrites tilt_frames and tilt_angles if available
 
+    def _get_ts_dim(self):
+        try:
+            mrc_path = self.get_mrc_path()
+            if mrc_path and mrc_path.exists():
+                with mrcfile.open(mrc_path) as mrc:
+                    # Convert from nm to angstroms (1 nm = 10 Å)
+                    self.dimX = mrc.data.shape[0]
+                    self.dimY = mrc.data.shape[1]
+                    print(f"Pixel size: {self.pixel_size:.2f} Å")
+            else:
+                raise FileNotFoundError(f"MRC file not found: {mrc_path}")
+        except Exception as e:
+            print(f"Error reading pixel size: {e}")
+            self.pixel_size = None
+
+    def _get_pixel_size(self):
+        """Get pixel size in angstroms from the MRC file."""
+        try:
+            mrc_path = self.get_mrc_path()
+            if mrc_path and mrc_path.exists():
+                with mrcfile.open(mrc_path) as mrc:
+                    # Convert from nm to angstroms (1 nm = 10 Å)
+                    self.pixel_size = mrc.voxel_size.x
+                    print(f"Pixel size: {self.pixel_size:.2f} Å")
+            else:
+                raise FileNotFoundError(f"MRC file not found: {mrc_path}")
+        except Exception as e:
+            print(f"Error reading pixel size: {e}")
+            self.pixel_size = None
+
+    def _convert_patch_size(self):
+        """Convert patch size from angstroms to pixels."""
+        if self.pixel_size and self.patch_size_ang:
+            # Convert patch_size_ang to float if it's a string
+            patch_ang = float(self.patch_size_ang)
+            # Calculate pixels and round to nearest integer
+            self.patch_size = int(round(patch_ang / self.pixel_size))
+            print(
+                f"Patch size converted from {patch_ang} Å to {self.patch_size} pixels"
+            )
+        else:
+            print(
+                "Warning: Could not convert patch size to pixels. Missing pixel size or patch size in angstroms."
+            )
+
     def read_tomostar_file(self):
-        tomostar_path = Path(self.path_to_tomostar) / self.tomostar if self.path_to_tomostar and self.tomostar else None
+        tomostar_path = (
+            Path(self.path_to_tomostar) / self.tomostar
+            if self.path_to_tomostar and self.tomostar
+            else None
+        )
         if tomostar_path and tomostar_path.exists():
             try:
                 tomostar_data = starfile.read(tomostar_path)
 
                 # Convert wrpMovieName entries to Path objects and extract filenames
-                self.tilt_frames = [Path(movie_name).name for movie_name in tomostar_data['wrpMovieName']]
-                self.tilt_angles = np.array(tomostar_data['wrpAngleTilt'])
-                self.axis_angles = tomostar_data['wrpAxisAngle']
-                self.doses = tomostar_data['wrpDose']
+                self.tilt_frames = [
+                    Path(movie_name).name
+                    for movie_name in tomostar_data["wrpMovieName"]
+                ]
+                self.tilt_angles = np.array(tomostar_data["wrpAngleTilt"])
+                self.axis_angles = tomostar_data["wrpAxisAngle"]
+                self.doses = tomostar_data["wrpDose"]
 
-                print(f"Processed {len(self.tilt_frames)} tilt frames from tomostar file.")
+                print(
+                    f"Processed {len(self.tilt_frames)} tilt frames from tomostar file."
+                )
             except KeyError as e:
                 print(f"Error reading tomostar file: Missing key {e}")
             except Exception as e:
@@ -95,7 +153,9 @@ class TiltSeries(BaseModel):
         if mdoc_path and mdoc_path.exists():
             md = mdocfile.read(mdoc_path)
             if not self.tilt_frames:  # Only update if tilt_frames is empty
-                self.tilt_frames = md["SubFramePath"].apply(lambda x: Path(x).name).tolist()
+                self.tilt_frames = (
+                    md["SubFramePath"].apply(lambda x: Path(x).name).tolist()
+                )
             print(f"Processed {len(self.tilt_frames)} tilt frames from mdoc file.")
         else:
             print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
@@ -106,20 +166,47 @@ class TiltSeries(BaseModel):
             mrc_path = Path(f"{self.tilt_dir_name}/{self.basename}.mrc")
             if mrc_path.is_file():
                 self.extension = "mrc"
-            elif st_path.is_file():  # Use elif to prioritize .mrc over .st if both exist
+            elif (
+                st_path.is_file()
+            ):  # Use elif to prioritize .mrc over .st if both exist
                 self.extension = "st"
 
     def get_mrc_path(self):
-        return self.tilt_dir_name / self.tilt_name if self.tilt_dir_name and self.tilt_name else None
+        return (
+            self.tilt_dir_name / self.tilt_name
+            if self.tilt_dir_name and self.tilt_name
+            else None
+        )
 
     def get_mdoc_path(self):
-        return Path(self.path_to_mdoc_data) / self.mdoc if self.path_to_mdoc_data and self.mdoc else None
+        """
+        Get the path to the mdoc file, checking both .mdoc and .mrc.mdoc patterns.
+        Returns the first existing file, or None if neither exists.
+        """
+        if not (self.path_to_mdoc_data and self.basename):
+            return None
+
+        mrc_mdoc = Path(self.path_to_mdoc_data) / f"{self.basename}.mrc.mdoc"
+        if mrc_mdoc.exists():
+            return mrc_mdoc
+        mdoc = Path(self.path_to_mdoc_data) / f"{self.basename}.mdoc"
+        if mdoc.exists():
+            return mdoc
+        return mrc_mdoc
 
     def get_xml_path(self):
-        return Path(self.path_to_xml_data) / self.xml if self.path_to_xml_data and self.xml else None
+        return (
+            Path(self.path_to_xml_data) / self.xml
+            if self.path_to_xml_data and self.xml
+            else None
+        )
 
     def get_rawtlt_path(self):
-        return Path(self.tilt_dir_name) / self.rawtlt if self.path_to_ts_data and self.rawtlt else None
+        return (
+            Path(self.tilt_dir_name) / self.rawtlt
+            if self.path_to_ts_data and self.rawtlt
+            else None
+        )
 
     def remove_frames(self, indices: List[int]):
         """
@@ -140,29 +227,42 @@ class TiltSeries(BaseModel):
                     del self.tilt_angles[index]
 
     def read_xml_file(self):
-        xml_path = Path(self.path_to_xml_data) / self.xml if self.path_to_xml_data and self.xml else None
+        xml_path = (
+            Path(self.path_to_xml_data) / self.xml
+            if self.path_to_xml_data and self.xml
+            else None
+        )
         if xml_path and xml_path.exists():
             try:
                 tree = ET.parse(xml_path)
                 root = tree.getroot()
 
                 # Parse XML attributes
-                self.plane_normal = root.get('PlaneNormal')
-                self.magnification_correction = root.get('MagnificationCorrection')
-                self.unselect_filter = root.get('UnselectFilter') == 'True'
-                self.unselect_manual = root.get('UnselectManual')
-                self.ctf_resolution_estimate = float(root.get('CTFResolutionEstimate', 0))
+                self.plane_normal = root.get("PlaneNormal")
+                self.magnification_correction = root.get("MagnificationCorrection")
+                self.unselect_filter = root.get("UnselectFilter") == "True"
+                self.unselect_manual = root.get("UnselectManual")
+                self.ctf_resolution_estimate = float(
+                    root.get("CTFResolutionEstimate", 0)
+                )
 
                 # Parse XML elements
-                self.use_tilt = [x.lower() == 'true' for x in root.find('UseTilt').text.split()]
-                self.axis_offset_x = [float(x) for x in root.find('AxisOffsetX').text.split()]
-                self.axis_offset_y = [float(x) for x in root.find('AxisOffsetY').text.split()]
+                self.use_tilt = [
+                    x.lower() == "true" for x in root.find("UseTilt").text.split()
+                ]
+                self.axis_offset_x = [
+                    float(x) for x in root.find("AxisOffsetX").text.split()
+                ]
+                self.axis_offset_y = [
+                    float(x) for x in root.find("AxisOffsetY").text.split()
+                ]
 
                 print("Successfully parsed XML file.")
             except Exception as e:
                 print(f"Error reading XML file: {e}")
         else:
             print(f"Could not find {self.xml} in {self.path_to_xml_data}.")
+
 
 class Tomogram(BaseModel):
     path_to_data: Union[str, Path] = None
@@ -187,17 +287,17 @@ def read_mrc(mrcin):
     return data, pixel_nm, dimX, dimY
 
 
-if __name__ == '__main__':
-    a = TiltSeries(path_to_ts_data="/Users/ps/data/wip/automateImod/example_data/Frames/imod/",
-                   path_to_xml_data="None",
-                   path_to_mdoc_data="/Users/ps/data/wip/automateImod/example_data/mdoc",
-                   basename="map-26-A4_ts_002",
-                   binval="5",
-                   tilt_axis_ang="84.7",
-                   patch_size="350")
+if __name__ == "__main__":
+    a = TiltSeries(
+        path_to_ts_data="/Users/ps/data/wip/automateImod/example_data/Frames/imod/",
+        path_to_xml_data="None",
+        path_to_mdoc_data="/Users/ps/data/wip/automateImod/example_data/mdoc",
+        basename="map-26-A4_ts_002",
+        binval="5",
+        tilt_axis_ang="84.7",
+        patch_size="350",
+    )
     print(a.read_rawtlt_file())
-
-
 
 
 """

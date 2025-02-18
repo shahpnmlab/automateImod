@@ -8,21 +8,65 @@ import automateImod.calc as calc
 import automateImod.pio as io
 
 
-def detect_large_shifts_afterxcorr(coarse_align_prexg, shifts_threshold=1.15):
+# def detect_large_shifts_afterxcorr(coarse_align_prexg, shifts_threshold=1.15):
+#     prexg_data = []
+#     with open(coarse_align_prexg, "r") as file:
+#         for line in file:
+#             numbers = [float(num) for num in line.split()]
+#             prexg_data.append(numbers[-2:])
+#     prexg_data = np.array(prexg_data)
+#     px_shift_dist = np.sqrt(np.sum(np.square(prexg_data), axis=1))
+#     median_px_shift = np.median(px_shift_dist)
+#     whoisbigger = px_shift_dist / median_px_shift
+#     upper_bound = np.mean(whoisbigger) + (shifts_threshold * np.std(whoisbigger))
+#     large_shift_indices = np.where(whoisbigger > upper_bound)[0].tolist()
+#     return large_shift_indices
+#     # else:
+#     #      return np.array([])
+
+
+def detect_large_shifts_afterxcorr(
+    coarse_align_prexg, pixel_size_nm, image_size, min_fov_percent=0.7
+):
+    """
+    Detect frames that have shifted beyond the acceptable field of view (FOV).
+
+    Args:
+        coarse_align_prexg (str): Path to the prexg file containing shift information
+        pixel_size_nm (float): Pixel size in nm
+        image_size (tuple): Image dimensions (width, height) in pixels
+        min_fov_percent (float): Minimum required overlap as a fraction of FOV (default: 0.7)
+
+    Returns:
+        list: Indices of frames with unacceptable shifts
+    """
+    pixel_size_ang = pixel_size_nm / 10
     prexg_data = []
     with open(coarse_align_prexg, "r") as file:
         for line in file:
             numbers = [float(num) for num in line.split()]
-            prexg_data.append(numbers[-2:])
+            prexg_data.append(numbers[-2:])  # Last two numbers are X,Y shifts
+
     prexg_data = np.array(prexg_data)
-    px_shift_dist = np.sqrt(np.sum(np.square(prexg_data), axis=1))
-    median_px_shift = np.median(px_shift_dist)
-    whoisbigger = px_shift_dist / median_px_shift
-    upper_bound = np.mean(whoisbigger) + (shifts_threshold * np.std(whoisbigger))
-    large_shift_indices = np.where(whoisbigger > upper_bound)[0].tolist()
+
+    # Convert shifts to Angstroms
+    shifts_ang = prexg_data * pixel_size_ang
+
+    # Calculate FOV dimensions in Angstroms
+    fov_width_ang = image_size[0] * pixel_size_ang
+    fov_height_ang = image_size[1] * pixel_size_ang
+
+    # Calculate maximum allowed shift (as percentage of FOV)
+    max_shift_x = (1 - min_fov_percent) * fov_width_ang
+    max_shift_y = (1 - min_fov_percent) * fov_height_ang
+
+    # Find frames where shifts exceed the maximum allowed in either direction
+    large_shift_indices = []
+    for idx, (shift_x, shift_y) in enumerate(shifts_ang):
+        if abs(shift_x) > max_shift_x or abs(shift_y) > max_shift_y:
+            large_shift_indices.append(idx)
+
     return large_shift_indices
-    # else:
-    #      return np.array([])
 
 
 def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
@@ -38,9 +82,14 @@ def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
 
     # Ensure the mask is the same length as original_rawtlt_angles
     if len(mask) > len(original_rawtlt_angles):
-        mask = mask[:len(original_rawtlt_angles)]
+        mask = mask[: len(original_rawtlt_angles)]
     elif len(mask) < len(original_rawtlt_angles):
-        mask = np.pad(mask, (0, len(original_rawtlt_angles) - len(mask)), 'constant', constant_values=True)
+        mask = np.pad(
+            mask,
+            (0, len(original_rawtlt_angles) - len(mask)),
+            "constant",
+            constant_values=True,
+        )
 
     cleaned_ts_rawtlt = original_rawtlt_angles[mask]
 
@@ -48,17 +97,24 @@ def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
     original_ts_rawtlt = ts.get_rawtlt_path()
 
     # Backup original TS data
-    mrcfile.write(name=f'{original_ts_file}~', data=im_data, voxel_size=angpix, overwrite=True)
-    np.savetxt(fname=f'{original_ts_rawtlt}~', X=original_rawtlt_angles, fmt='%0.2f')
+    mrcfile.write(
+        name=f"{original_ts_file}~", data=im_data, voxel_size=angpix, overwrite=True
+    )
+    np.savetxt(fname=f"{original_ts_rawtlt}~", X=original_rawtlt_angles, fmt="%0.2f")
 
     # Write new TS data
-    mrcfile.write(name=f'{original_ts_file}', data=cleaned_mrc, voxel_size=angpix, overwrite=True)
-    np.savetxt(fname=f'{original_ts_rawtlt}', X=cleaned_ts_rawtlt, fmt='%0.2f')
+    mrcfile.write(
+        name=f"{original_ts_file}", data=cleaned_mrc, voxel_size=angpix, overwrite=True
+    )
+    np.savetxt(fname=f"{original_ts_rawtlt}", X=cleaned_ts_rawtlt, fmt="%0.2f")
 
     # Update the TiltSeries object
     ts.tilt_angles = cleaned_ts_rawtlt
-    ts.removed_indices = sorted(set(ts.removed_indices + bad_idx)) if hasattr(ts, 'removed_indices') else sorted(
-        bad_idx)
+    ts.removed_indices = (
+        sorted(set(ts.removed_indices + bad_idx))
+        if hasattr(ts, "removed_indices")
+        else sorted(bad_idx)
+    )
 
 
 def get_alignment_error(tilt_dir_name):
@@ -67,7 +123,7 @@ def get_alignment_error(tilt_dir_name):
     sd = None
 
     try:
-        with open(f'{tilt_dir_name}/align_patch.log', 'r') as f_in:
+        with open(f"{tilt_dir_name}/align_patch.log", "r") as f_in:
             for line in f_in:
                 if "Ratio of total measured values to all unknowns" in line:
                     known_unknown_ratio = float(line.split("=")[-1])
@@ -88,10 +144,10 @@ def get_alignment_error(tilt_dir_name):
 
 def write_ta_coords_log(tilt_dir_name):
     with open(f"{str(tilt_dir_name)}/taCoordinates.log", "w") as ali_log:
-        sbp_cmd = ['alignlog', '-c', f'{str(tilt_dir_name)}/align_patch.log']
-        write_taCoord_log = subprocess.run(sbp_cmd, stdout=ali_log,
-                                           stderr=subprocess.PIPE,
-                                           text=True)
+        sbp_cmd = ["alignlog", "-c", f"{str(tilt_dir_name)}/align_patch.log"]
+        write_taCoord_log = subprocess.run(
+            sbp_cmd, stdout=ali_log, stderr=subprocess.PIPE, text=True
+        )
         print(write_taCoord_log.stdout)
         print(write_taCoord_log.stderr)
 
@@ -110,7 +166,7 @@ def improve_bad_alignments(tilt_dir_name, tilt_name):
     goodpoints = goodpoints[0] + 1
 
     # Convert the fiducial model file to a text file and readit in
-    subprocess.run(['model2point', '-contour', mod_file, mod2txt])
+    subprocess.run(["model2point", "-contour", mod_file, mod2txt])
 
     fid_text = np.loadtxt(mod2txt)
     new_good_contours = np.empty((0, 4))
@@ -127,15 +183,27 @@ def improve_bad_alignments(tilt_dir_name, tilt_name):
     new_contour_id = new_contour_id.reshape(new_contour_id.shape[0], 1)
     new_good_contours = np.hstack((new_contour_id, new_good_contours[:, 1:]))
 
-    np.savetxt(txt4seed, new_good_contours, fmt=' '.join(['%d'] + ['%0.3f'] * 2 + ['%d']))
+    np.savetxt(
+        txt4seed, new_good_contours, fmt=" ".join(["%d"] + ["%0.3f"] * 2 + ["%d"])
+    )
 
-    point_to_model_cmd = ['point2model', '-open', '-circle', '6', '-image', f"{tilt_dir_name}/{tilt_name}_preali.mrc",
-                          txt4seed, mod_file]
+    point_to_model_cmd = [
+        "point2model",
+        "-open",
+        "-circle",
+        "6",
+        "-image",
+        f"{tilt_dir_name}/{tilt_name}_preali.mrc",
+        txt4seed,
+        mod_file,
+    ]
 
     subprocess.run(point_to_model_cmd)
 
 
-def detect_dark_tilts(ts_data, ts_tilt_angles, brightness_factor=0.65, variance_factor=0.1):
+def detect_dark_tilts(
+    ts_data, ts_tilt_angles, brightness_factor=0.65, variance_factor=0.1
+):
     # Identify the reference image, typically at or near 0 tilt
     tilt_series_mid_point_idx = calc.find_symmetric_tilt_reference(ts_tilt_angles)
     normalized_images = calc.normalize(ts_data)
@@ -154,14 +222,27 @@ def detect_dark_tilts(ts_data, ts_tilt_angles, brightness_factor=0.65, variance_
     std_deviations = np.std(normalized_images, axis=(1, 2))
 
     # Identify dark tilts based on mean intensity and standard deviation
-    dark_frame_indices = np.where((mean_intensities < threshold_intensity) & (std_deviations < threshold_variance))[0].tolist()
+    dark_frame_indices = np.where(
+        (mean_intensities < threshold_intensity) & (std_deviations < threshold_variance)
+    )[0].tolist()
 
     return dark_frame_indices
 
+
 def swap_fast_slow_axes(tilt_dirname, tilt_name):
-    d, pixel_nm, _, _, = io.read_mrc(f'{tilt_dirname}/{tilt_name}.rec')
+    (
+        d,
+        pixel_nm,
+        _,
+        _,
+    ) = io.read_mrc(f"{tilt_dirname}/{tilt_name}.rec")
     d = np.swapaxes(d, 0, 1)
-    mrcfile.write(f'{tilt_dirname}/{tilt_name}.rec', data=d, voxel_size=pixel_nm * 10, overwrite=True)
+    mrcfile.write(
+        f"{tilt_dirname}/{tilt_name}.rec",
+        data=d,
+        voxel_size=pixel_nm * 10,
+        overwrite=True,
+    )
 
 
 def match_partial_filename(string_to_match, target_string):
@@ -182,19 +263,24 @@ def match_partial_filename(string_to_match, target_string):
 #     else:
 #         print(f"XML file {xml_file_path} not found.")
 
+
 def remove_xml_files(xml_file_path):
     if xml_file_path.exists():
         if xml_file_path.exists():
-            backup_file_path = xml_file_path.with_suffix('.xml.bkp')
+            backup_file_path = xml_file_path.with_suffix(".xml.bkp")
             shutil.move(xml_file_path, backup_file_path)
         else:
             print(f"XML file {xml_file_path} not found.")
 
 
-if __name__ == '__main__':
-    ts_object = io.TiltSeries(path_to_ts_data="/Users/ps/data/wip/automateImod/example_data/Frames/imod/",
-                              path_to_mdoc_data="/Users/ps/data/wip/automateImod/example_data/Frames/mdoc/",
-                              basename="map-26-A4_ts_002",
-                              tilt_axis_ang=60, binval=10, patch_size=10)
+if __name__ == "__main__":
+    ts_object = io.TiltSeries(
+        path_to_ts_data="/Users/ps/data/wip/automateImod/example_data/Frames/imod/",
+        path_to_mdoc_data="/Users/ps/data/wip/automateImod/example_data/Frames/mdoc/",
+        basename="map-26-A4_ts_002",
+        tilt_axis_ang=60,
+        binval=10,
+        patch_size=10,
+    )
     a = detect_dark_tilts(ts_object)
     print(a)
