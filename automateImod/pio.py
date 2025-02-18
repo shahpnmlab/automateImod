@@ -25,21 +25,25 @@ class TiltSeries(BaseModel):
     binval: Union[str, int]
     z_height: Optional[Union[str, int]] = None
     extension: Optional[str] = None
-    patch_size: Union[str, int]
+    patch_size: Union[str, int] = None
+    patch_size_ang: Union[str, float]
     tilt_frames: List[str] = []
     tilt_angles: Union[List[float], np.ndarray] = []
     tilt_dir_name: Optional[Path] = None
     axis_angles: List[float] = []
     doses: List[float] = []
-    use_tilt: List[bool] = []  # New attribute for UseTilt from XML
-    axis_offset_x: List[float] = []  # New attribute from XML
-    axis_offset_y: List[float] = []  # New attribute from XML
-    plane_normal: Optional[str] = None  # New attribute from XML
+    use_tilt: List[bool] = []
+    axis_offset_x: List[float] = []
+    axis_offset_y: List[float] = []
+    plane_normal: Optional[str] = None
     magnification_correction: Optional[str] = None
     unselect_filter: Optional[bool] = None
     unselect_manual: Optional[str] = None
     ctf_resolution_estimate: Optional[float] = None
     removed_indices: Optional[List[int]] = []
+    # Make dimX and dimY optional with None as default
+    dimX: Optional[Union[str, int]] = None
+    dimY: Optional[Union[str, int]] = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -48,37 +52,46 @@ class TiltSeries(BaseModel):
         super().__init__(**data)
         if self.path_to_ts_data and self.basename:
             self.tilt_dir_name = Path(self.path_to_ts_data) / self.basename
-            self.tilt_name = (
-                f"{self.basename}.{self.extension}" if self.extension else None
-            )
             self.rawtlt = f"{self.basename}.rawtlt"
             self.mdoc = f"{self.basename}.mdoc"
             self.xml = f"{self.basename}.xml"
+            self.get_extension()
             self.tomostar = f"{self.basename}.tomostar"
             self.tilt_frames = []
             self.tilt_angles = []
-            self.read_rawtlt_file()  # Base tilt angles
-            self.get_extension()
-            self.read_mdoc_file()  # May update tilt_frames if tomostar not available
-            self._get_pixel_size()
+
+            # Initialize basic properties
+            self.read_rawtlt_file()
+            self.tilt_name = f"{self.basename}.{self.extension}"
+
+            # Get dimensions and pixel size from MRC file
+            self._get_ts_dim()  # This will set dimX, dimY, and pixel_size
+
+            # Continue with other initialization steps
             self._convert_patch_size()
+            self.read_mdoc_file()
 
             if self.path_to_tomostar:
-                self.read_tomostar_file()  # Overwrites tilt_frames and tilt_angles if available
+                self.read_tomostar_file()
 
     def _get_ts_dim(self):
+        """Get dimensions and pixel size from the MRC file."""
         try:
             mrc_path = self.get_mrc_path()
             if mrc_path and mrc_path.exists():
                 with mrcfile.open(mrc_path) as mrc:
-                    # Convert from nm to angstroms (1 nm = 10 Å)
-                    self.dimX = mrc.data.shape[0]
-                    self.dimY = mrc.data.shape[1]
+                    self.dimX = mrc.data.shape[-2]
+                    self.dimY = mrc.data.shape[-1]
+                    self.pixel_size = float(mrc.voxel_size.x)
+                    print(f"Dimensions: {self.dimX} x {self.dimY}")
                     print(f"Pixel size: {self.pixel_size:.2f} Å")
             else:
                 raise FileNotFoundError(f"MRC file not found: {mrc_path}")
         except Exception as e:
-            print(f"Error reading pixel size: {e}")
+            print(f"Error reading MRC file: {e}")
+            # Set default values if reading fails
+            self.dimX = None
+            self.dimY = None
             self.pixel_size = None
 
     def _get_pixel_size(self):
@@ -172,11 +185,7 @@ class TiltSeries(BaseModel):
                 self.extension = "st"
 
     def get_mrc_path(self):
-        return (
-            self.tilt_dir_name / self.tilt_name
-            if self.tilt_dir_name and self.tilt_name
-            else None
-        )
+        return self.tilt_dir_name / self.tilt_name
 
     def get_mdoc_path(self):
         """

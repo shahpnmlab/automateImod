@@ -82,7 +82,7 @@ def align_tilts(
         coms.track_patch_com(
             tilt_dir_name=ts.tilt_dir_name,
             tilt_name=ts.basename,
-            pixel_nm=ts.pixel_size * 10,  # for nm
+            pixel_nm=ts.pixel_size / 10,  # for nm
             binval=ts.binval,
             tilt_axis_ang=ts.tilt_axis_ang,
             dimX=ts.dimX,
@@ -107,7 +107,7 @@ def align_tilts(
                 utils.remove_bad_tilts(
                     ts=ts,
                     im_data=im_data,
-                    pixel_nm=ts.pixel_size * 10,
+                    pixel_nm=ts.pixel_size / 10,
                     bad_idx=dark_frame_indices,
                 )
                 ts.removed_indices.extend(dark_frame_indices)
@@ -134,10 +134,10 @@ def align_tilts(
             )
 
             large_shift_indices = utils.detect_large_shifts_afterxcorr(
-                coarse_align_prexg="{ts.tilt_dir_name}/{ts.basename}.prexg",
-                pixel_size_nm=pixel_nm,
-                image_size=(dimX, dimY),
-                min_fov=min_fov,
+                coarse_align_prexg=f"{ts.tilt_dir_name}/{ts.basename}.prexg",
+                pixel_size_nm=ts.pixel_size / 10,
+                image_size=(ts.dimX, ts.dimY),
+                min_fov_fraction=min_fov,
             )
 
             if len(large_shift_indices) > 0:
@@ -157,7 +157,7 @@ def align_tilts(
                 utils.remove_bad_tilts(
                     ts=ts,
                     im_data=im_data,
-                    pixel_nm=pixel_nm,
+                    pixel_nm=ts.pixel_size / 10,
                     bad_idx=large_shift_indices,
                 )
                 ts.removed_indices.extend(original_large_shift_indices)
