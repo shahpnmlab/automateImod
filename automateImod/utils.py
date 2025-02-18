@@ -26,7 +26,7 @@ import automateImod.pio as io
 
 
 def detect_large_shifts_afterxcorr(
-    coarse_align_prexg, pixel_size_nm, image_size, min_fov_percent=0.7
+    coarse_align_prexg, pixel_size_nm, image_size, min_fov_fraction=0.7
 ):
     """
     Detect frames that have shifted beyond the acceptable field of view (FOV).
@@ -35,7 +35,7 @@ def detect_large_shifts_afterxcorr(
         coarse_align_prexg (str): Path to the prexg file containing shift information
         pixel_size_nm (float): Pixel size in nm
         image_size (tuple): Image dimensions (width, height) in pixels
-        min_fov_percent (float): Minimum required overlap as a fraction of FOV (default: 0.7)
+        min_fov_fraction (float): Minimum required overlap as a fraction of FOV (default: 0.7)
 
     Returns:
         list: Indices of frames with unacceptable shifts
@@ -57,8 +57,8 @@ def detect_large_shifts_afterxcorr(
     fov_height_ang = image_size[1] * pixel_size_ang
 
     # Calculate maximum allowed shift (as percentage of FOV)
-    max_shift_x = (1 - min_fov_percent) * fov_width_ang
-    max_shift_y = (1 - min_fov_percent) * fov_height_ang
+    max_shift_x = (1 - min_fov_fraction) * fov_width_ang
+    max_shift_y = (1 - min_fov_fraction) * fov_height_ang
 
     # Find frames where shifts exceed the maximum allowed in either direction
     large_shift_indices = []
