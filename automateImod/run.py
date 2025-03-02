@@ -33,6 +33,8 @@ def process_single_tilt_series(
     update_warp_xml: bool = False,
     reconstruct: bool = False,
     ts_xml_path: Optional[Path] = None,
+    log_file: Optional[Path] = None,
+    console_output: bool = True,
 ) -> Dict[str, Any]:
     """
     Process a single tilt series: align, optionally update XML, and reconstruct.
@@ -49,13 +51,20 @@ def process_single_tilt_series(
         update_warp_xml: Whether to update Warp XML files
         reconstruct: Whether to reconstruct tomograms
         ts_xml_path: Path to XML files (required if update_warp_xml is True)
+        log_file: Path to save log output
+        console_output: Whether to output logs to console
 
     Returns:
         Dictionary with processing results
     """
+    # Set up logger with file output if specified
+    utils.setup_logger(log_file=log_file, console_output=console_output)
+
     result = {"basename": ts_path.name, "success": False, "error": None}
 
     try:
+        logger.info(f"Starting processing of tilt series: {ts_path.name}")
+
         # Initialize tilt series object
         ts = pio.TiltSeries(
             path_to_ts_data=ts_path.parent,
@@ -91,6 +100,7 @@ def process_single_tilt_series(
             )
             result["reconstructed"] = recon_result
 
+        logger.info(f"Completed processing tilt series: {ts_path.name}")
         return result
 
     except Exception as e:
@@ -614,6 +624,9 @@ def align_tilts(
     reconstruct: bool = typer.Option(
         False, help="Reconstruct tomograms after alignment"
     ),
+    quiet: bool = typer.Option(
+        False, help="Minimize console output (logs still saved to files)"
+    ),
 ):
     """
     Perform patch-based tilt series tracking using IMOD routines.
@@ -629,6 +642,17 @@ def align_tilts(
         )
         raise typer.Abort()
 
+    # Set up logging
+    console_output = not quiet
+
+    # For single mode, log directly to console and a file
+    if n_cpu is None and ts_basename is not None:
+        log_file = Path(ts_data_path) / ts_basename / f"{ts_basename}.log"
+        utils.setup_logger(log_file=log_file, console_output=console_output)
+    else:
+        # For parallel mode, only show minimal console info, logs go to individual files
+        utils.setup_logger(console_output=console_output)
+
     # Check if using n_cpu for parallel processing or batch processing by pattern
     if n_cpu is not None or (ts_basename is None and pattern != "*"):
         # Auto-discover tilt series from the data directory
@@ -636,7 +660,7 @@ def align_tilts(
 
         # Find all MRC or ST files that match the pattern
         search_pattern = pattern if pattern != "*" else "*.{mrc,st}"
-        logger.info(
+        print(
             f"Discovering tilt series in {ts_data_path} with pattern: {search_pattern}"
         )
 
@@ -650,15 +674,19 @@ def align_tilts(
         ts_basenames = list(set(ts_basenames))  # Remove duplicates
 
         if not ts_basenames:
-            logger.error(f"No tilt series found in {ts_data_path}")
+            print(f"Error: No tilt series found in {ts_data_path}")
             raise typer.Abort()
 
-        logger.info(f"Found {len(ts_basenames)} tilt series to process")
+        print(f"Found {len(ts_basenames)} tilt series to process")
 
         # Process in parallel
-        logger.info(
+        print(
             f"Processing {len(ts_basenames)} tilt series in parallel using {n_cpu or 'all available'} CPU cores"
         )
+        print(
+            f"Logs will be saved to individual log files in each tilt series directory"
+        )
+
         results = parallel_align_tilts(
             data_path=ts_data_path,
             basenames=ts_basenames,
@@ -676,13 +704,15 @@ def align_tilts(
         )
 
         # Log summary of results
-        success_count = sum(1 for r in results if r.get("success", False))
-        logger.info(f"Processed {len(results)} tilt series, {success_count} successful")
+        success_count = sum(1 for r in results if r and r.get("success", False))
+        print(
+            f"\nSummary: Processed {len(results)} tilt series, {success_count} successful"
+        )
 
     else:
         # Process a single tilt series
         if ts_basename is None:
-            logger.error("Must specify either --ts-basename or --n-cpu")
+            print("Error: Must specify either --ts-basename or --n-cpu")
             raise typer.Abort()
 
         logger.info(f"Processing single tilt series: {ts_basename}")
@@ -703,10 +733,14 @@ def align_tilts(
 
         if result.get("success", False):
             logger.info(f"Successfully processed tilt series: {ts_basename}")
+            print(f"Successfully processed tilt series: {ts_basename}")
         else:
             logger.error(f"Failed to process tilt series: {ts_basename}")
             if result.get("error"):
                 logger.error(f"Error: {result['error']}")
+            print(f"Failed to process tilt series: {ts_basename}")
+            if result.get("error"):
+                print(f"Error: {result['error']}")
 
 
 @automateImod.command()

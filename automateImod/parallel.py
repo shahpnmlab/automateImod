@@ -58,11 +58,50 @@ def process_batch(func: Callable, batch: List[Any], *args, **kwargs) -> List[Any
     results = []
     for item in batch:
         try:
-            result = func(item, *args, **kwargs)
+            # Print progress to console when processing starts
+            if hasattr(item, "name"):
+                print(f"Started processing: {item.name}")
+            elif hasattr(item, "stem"):
+                print(f"Started processing: {item.stem}")
+            else:
+                print(f"Started processing item")
+
+            # Execute the function with file-specific logging
+            log_file = None
+            if hasattr(item, "parent") and hasattr(item, "name"):
+                log_file = item.parent / f"{item.stem}.log"
+
+            # Update kwargs to include log_file if needed
+            process_kwargs = kwargs.copy()
+            if log_file:
+                process_kwargs["log_file"] = log_file
+                process_kwargs["console_output"] = (
+                    False  # Disable console output for parallel jobs
+                )
+
+            result = func(item, *args, **process_kwargs)
             results.append(result)
+
+            # Print progress to console when processing completes
+            if hasattr(item, "name"):
+                print(
+                    f"Completed processing: {item.name} - {'SUCCESS' if result.get('success', False) else 'FAILED'}"
+                )
+            elif hasattr(item, "stem"):
+                print(
+                    f"Completed processing: {item.stem} - {'SUCCESS' if result.get('success', False) else 'FAILED'}"
+                )
+            else:
+                print(
+                    f"Completed processing item - {'SUCCESS' if result.get('success', False) else 'FAILED'}"
+                )
+
         except Exception as e:
-            logger.error(f"Error processing {item}: {e}")
+            error_msg = f"Error processing {item}: {e}"
+            logger.error(error_msg)
+            print(f"Failed processing: {getattr(item, 'name', 'item')} - ERROR")
             results.append(None)
+
     return results
 
 
@@ -138,6 +177,7 @@ def parallel_align_tilts(
 ) -> List[Dict[str, Any]]:
     """
     Run tilt series alignment in parallel on multiple CPU cores.
+    Each tilt series will have its logs saved to a separate log file.
 
     Args:
         data_path: Path to directory containing tilt series data
@@ -157,9 +197,13 @@ def parallel_align_tilts(
     # Create paths from basenames
     tilt_series_paths = [Path(data_path) / basename for basename in basenames]
 
+    # Add log file paths to each tilt series
+    process_kwargs = kwargs.copy()
+    process_kwargs["console_output"] = False  # Disable console for parallel jobs
+
     # Process tilt series in parallel
     results = parallel_process(
-        tilt_series_paths, process_single_tilt_series, n_workers=n_cpu, **kwargs
+        tilt_series_paths, process_single_tilt_series, n_workers=n_cpu, **process_kwargs
     )
 
     return results

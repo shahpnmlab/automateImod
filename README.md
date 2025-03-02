@@ -77,8 +77,14 @@ automateImod align-tilts \
   --ts-tilt-axis 84.7 \
   --ts-bin 6 \
   --ts-patch-size 300 \
-  --n-cpu 8
+  --n-cpu 8 \
+  --quiet
 ```
+
+When running in parallel mode:
+- Each tilt series will have its log saved to its own file at `/path/to/IMOD/TS_BASENAME/TS_BASENAME.log`
+- Only minimal progress information will be shown in the console
+- The `--quiet` flag reduces console output even further
 
 ### Complete Parallel Pipeline
 

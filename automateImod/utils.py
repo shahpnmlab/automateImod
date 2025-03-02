@@ -13,12 +13,18 @@ import automateImod.pio as io
 logger = logging.getLogger(__name__)
 
 
-def setup_logger(log_level: str = "INFO"):
+def setup_logger(
+    log_level: str = "INFO",
+    log_file: Optional[Path] = None,
+    console_output: bool = True,
+):
     """
     Set up logging configuration.
 
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_file: Optional path to save log file
+        console_output: Whether to output logs to console
     """
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
@@ -27,7 +33,7 @@ def setup_logger(log_level: str = "INFO"):
     if not isinstance(numeric_level, int):
         raise ValueError(f"Invalid log level: {log_level}")
 
-    # Configure root logger
+    # Configure root logger - basic configuration
     logging.basicConfig(
         level=numeric_level,
         format=log_format,
@@ -37,11 +43,26 @@ def setup_logger(log_level: str = "INFO"):
     logger = logging.getLogger("automateImod")
     logger.setLevel(numeric_level)
 
-    # Avoid duplicate handlers
-    if not logger.handlers:
-        # Create console handler
+    # Remove existing handlers to avoid duplicates
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    # Add file handler if log_file is provided
+    if log_file:
+        log_file = Path(log_file)
+        # Create parent directory if it doesn't exist
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging.Formatter(log_format))
+        file_handler.setLevel(numeric_level)
+        logger.addHandler(file_handler)
+
+    # Add console handler if requested
+    if console_output:
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(logging.Formatter(log_format))
+        console_handler.setLevel(numeric_level)
         logger.addHandler(console_handler)
 
 
