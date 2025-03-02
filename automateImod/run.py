@@ -578,18 +578,20 @@ def reconstruct_tomogram(
 
 @automateImod.command(no_args_is_help=True)
 def align_tilts(
-    ts_basename: str = typer.Option(..., help="Tilt series basename e.g. Position_1"),
+    ts_basename: Optional[str] = typer.Option(
+        None, help="Specific tilt series basename (not needed with --n-cpu)"
+    ),
     ts_data_path: Path = typer.Option(
         ..., help="Directory containing tilt series data"
     ),
     ts_mdoc_path: Optional[Path] = typer.Option(
-        None, help="Directory containing the tilt series mdoc file"
+        None, help="Directory containing the tilt series mdoc files"
     ),
     ts_tomostar_path: Optional[Path] = typer.Option(
-        None, help="Directory containing the tomostar file"
+        None, help="Directory containing the tomostar files"
     ),
     ts_xml_path: Optional[Path] = typer.Option(
-        None, help="Directory containing the XML file (required for --update-warp-xml)"
+        None, help="Directory containing the XML files (required for --update-warp-xml)"
     ),
     ts_tilt_axis: str = typer.Option(..., help="Tilt axis value"),
     ts_bin: str = typer.Option("1", help="Bin value to reduce the tilt series size by"),
@@ -627,15 +629,39 @@ def align_tilts(
         )
         raise typer.Abort()
 
-    # Determine if we're processing a single tilt series or multiple
-    if "*" in ts_basename or "?" in ts_basename or pattern != "*":
-        # Process multiple tilt series in parallel
-        logger.info(f"Processing multiple tilt series matching pattern '{pattern}'")
+    # Check if using n_cpu for parallel processing or batch processing by pattern
+    if n_cpu is not None or (ts_basename is None and pattern != "*"):
+        # Auto-discover tilt series from the data directory
+        from automateImod.parallel import find_tilt_series, parallel_process
 
-        # Use parallel processing module to handle multiple tilt series
+        # Find all MRC or ST files that match the pattern
+        search_pattern = pattern if pattern != "*" else "*.{mrc,st}"
+        logger.info(
+            f"Discovering tilt series in {ts_data_path} with pattern: {search_pattern}"
+        )
+
+        # Find tilt series files
+        ts_files = []
+        for ext in ["mrc", "st"]:
+            ts_files.extend(list(Path(ts_data_path).glob(f"*/*.{ext}")))
+
+        # Extract basenames (without extension)
+        ts_basenames = [ts_file.stem for ts_file in ts_files]
+        ts_basenames = list(set(ts_basenames))  # Remove duplicates
+
+        if not ts_basenames:
+            logger.error(f"No tilt series found in {ts_data_path}")
+            raise typer.Abort()
+
+        logger.info(f"Found {len(ts_basenames)} tilt series to process")
+
+        # Process in parallel
+        logger.info(
+            f"Processing {len(ts_basenames)} tilt series in parallel using {n_cpu or 'all available'} CPU cores"
+        )
         results = parallel_align_tilts(
             data_path=ts_data_path,
-            pattern=pattern,
+            basenames=ts_basenames,
             n_cpu=n_cpu,
             ts_mdoc_path=ts_mdoc_path,
             ts_tomostar_path=ts_tomostar_path,
@@ -655,6 +681,10 @@ def align_tilts(
 
     else:
         # Process a single tilt series
+        if ts_basename is None:
+            logger.error("Must specify either --ts-basename or --n-cpu")
+            raise typer.Abort()
+
         logger.info(f"Processing single tilt series: {ts_basename}")
 
         result = process_single_tilt_series(

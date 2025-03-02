@@ -134,14 +134,14 @@ def find_tilt_series(data_path: Union[str, Path], pattern: str = "*") -> List[Pa
 
 
 def parallel_align_tilts(
-    data_path: Union[str, Path], pattern: str = "*", n_cpu: int = None, **kwargs
+    data_path: Union[str, Path], basenames: List[str], n_cpu: int = None, **kwargs
 ) -> List[Dict[str, Any]]:
     """
     Run tilt series alignment in parallel on multiple CPU cores.
 
     Args:
         data_path: Path to directory containing tilt series data
-        pattern: Glob pattern to match tilt series basename
+        basenames: List of tilt series basenames to process
         n_cpu: Number of CPU cores to use (default: all available)
         **kwargs: Additional arguments to pass to the align_tilts function
 
@@ -150,20 +150,16 @@ def parallel_align_tilts(
     """
     from automateImod.run import process_single_tilt_series
 
-    # Find all tilt series matching the pattern
-    tilt_series_list = find_tilt_series(data_path, pattern)
-
-    if not tilt_series_list:
-        logger.warning(
-            f"No tilt series found matching pattern '{pattern}' in {data_path}"
-        )
+    if not basenames:
+        logger.warning(f"No tilt series basenames provided")
         return []
 
-    logger.info(f"Found {len(tilt_series_list)} tilt series to process")
+    # Create paths from basenames
+    tilt_series_paths = [Path(data_path) / basename for basename in basenames]
 
     # Process tilt series in parallel
     results = parallel_process(
-        tilt_series_list, process_single_tilt_series, n_workers=n_cpu, **kwargs
+        tilt_series_paths, process_single_tilt_series, n_workers=n_cpu, **kwargs
     )
 
     return results
