@@ -114,11 +114,12 @@ class TiltSeries(BaseModel):
         if self.pixel_size and self.patch_size_ang:
             # Convert patch_size_ang to float if it's a string
             patch_ang = float(self.patch_size_ang)
-            binned_px = self.pixel_size / (1/int(self.binval))
+            # Calculate binned pixel size in angstroms
+            binned_px = float(self.pixel_size) * int(self.binval)
             # Calculate pixels and round to nearest integer
-            self.patch_size = int(round(patch_ang * binned_px))
+            self.patch_size = int(round(patch_ang / binned_px))
             print(
-                f"Patch size converted from {patch_ang} Å to {self.patch_size} pixels"
+                f"Patch size converted from {patch_ang} Å to {self.patch_size} pixels (binned pixel size: {binned_px:.2f} Å)"
             )
         else:
             print(
@@ -305,7 +306,7 @@ if __name__ == "__main__":
         basename="map-26-A4_ts_002",
         binval="5",
         tilt_axis_ang="84.7",
-        patch_size="350",
+        patch_size_ang="350",  # Changed patch_size to patch_size_ang to match class definition
     )
     print(a.read_rawtlt_file())
 
