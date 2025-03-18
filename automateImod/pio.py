@@ -114,7 +114,7 @@ class TiltSeries(BaseModel):
         if self.pixel_size and self.patch_size_ang:
             # Convert patch_size_ang to float if it's a string
             patch_ang = float(self.patch_size_ang)
-            binned_px = self.pixel_size *(1/self.binval)
+            binned_px = self.pixel_size *(1/int(self.binval))
             # Calculate pixels and round to nearest integer
             self.patch_size = int(round(patch_ang / binned_px))
             print(
