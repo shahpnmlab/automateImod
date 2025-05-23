@@ -25,48 +25,83 @@ import automateImod.pio as io
 #     #      return np.array([])
 
 
-def detect_large_shifts_afterxcorr(
-    coarse_align_prexg, pixel_size_nm, image_size, min_fov_fraction=0.7
-):
-    """
-    Detect frames that have shifted beyond the acceptable field of view (FOV).
+#def detect_large_shifts_afterxcorr(
+#    coarse_align_prexg, pixel_size_nm, image_size, min_fov_fraction=0.7
+#):
+#    """
+#    Detect frames that have shifted beyond the acceptable field of view (FOV).
+#
+#    Args:
+#        coarse_align_prexg (str): Path to the prexg file containing shift information
+#        pixel_size_nm (float): Pixel size in nm
+#        image_size (tuple): Image dimensions (width, height) in pixels
+#        min_fov_fraction (float): Minimum required overlap as a fraction of FOV (default: 0.7)
+#
+#    Returns:
+#        list: Indices of frames with unacceptable shifts
+#    """
+#    pixel_size_ang = pixel_size_nm / 10
+#    prexg_data = []
+#    with open(coarse_align_prexg, "r") as file:
+#        for line in file:
+#            numbers = [float(num) for num in line.split()]
+#            prexg_data.append(numbers[-2:])  # Last two numbers are X,Y shifts
+#
+#    prexg_data = np.array(prexg_data)
+#
+#    # Convert shifts to Angstroms
+#    shifts_ang = prexg_data * pixel_size_ang
+#
+#    # Calculate FOV dimensions in Angstroms
+#    fov_width_ang = image_size[0] * pixel_size_ang
+#    fov_height_ang = image_size[1] * pixel_size_ang
+#
+#    # Calculate maximum allowed shift (as percentage of FOV)
+#    max_shift_x = (1 - min_fov_fraction) * fov_width_ang
+#    max_shift_y = (1 - min_fov_fraction) * fov_height_ang
+#
+#    # Find frames where shifts exceed the maximum allowed in either direction
+#    large_shift_indices = []
+#    for idx, (shift_x, shift_y) in enumerate(shifts_ang):
+#        if abs(shift_x) > max_shift_x or abs(shift_y) > max_shift_y:
+#            large_shift_indices.append(idx)
+#
+#    return large_shift_indices
 
+def detect_large_shifts_afterxcorr(coarse_align_prexg, pixel_size_nm, image_size, min_fov_fraction=0.7):
+    """
+    Detect frames with shifts exceeding reasonable alignment tolerances.
+    
     Args:
-        coarse_align_prexg (str): Path to the prexg file containing shift information
+        coarse_align_prexg (str): Path to prexg file
         pixel_size_nm (float): Pixel size in nm
         image_size (tuple): Image dimensions (width, height) in pixels
-        min_fov_fraction (float): Minimum required overlap as a fraction of FOV (default: 0.7)
-
+        min_fov_fraction (float): Minimum required overlap fraction (default: 0.7)
+        
     Returns:
-        list: Indices of frames with unacceptable shifts
+        np.ndarray: Indices of frames with excessive shifts
     """
-    pixel_size_ang = pixel_size_nm / 10
-    prexg_data = []
-    with open(coarse_align_prexg, "r") as file:
-        for line in file:
-            numbers = [float(num) for num in line.split()]
-            prexg_data.append(numbers[-2:])  # Last two numbers are X,Y shifts
-
-    prexg_data = np.array(prexg_data)
-
-    # Convert shifts to Angstroms
-    shifts_ang = prexg_data * pixel_size_ang
-
+    pixel_size_ang = pixel_size_nm * 10
+    shifts_pixels = np.loadtxt(coarse_align_prexg, usecols=(-2, -1))
+    shifts_ang = shifts_pixels * pixel_size_ang
+    
     # Calculate FOV dimensions in Angstroms
     fov_width_ang = image_size[0] * pixel_size_ang
     fov_height_ang = image_size[1] * pixel_size_ang
-
-    # Calculate maximum allowed shift (as percentage of FOV)
-    max_shift_x = (1 - min_fov_fraction) * fov_width_ang
-    max_shift_y = (1 - min_fov_fraction) * fov_height_ang
-
-    # Find frames where shifts exceed the maximum allowed in either direction
-    large_shift_indices = []
-    for idx, (shift_x, shift_y) in enumerate(shifts_ang):
-        if abs(shift_x) > max_shift_x or abs(shift_y) > max_shift_y:
-            large_shift_indices.append(idx)
-
-    return large_shift_indices
+    
+    # Convert min_fov_fraction to max allowable shift fraction
+    # For practical alignment QC, use a much smaller fraction than geometric limit
+    max_shift_fov_fraction = (1 - min_fov_fraction) * 0.1  # Scale down for realistic thresholds
+    
+    # Calculate maximum allowed shift
+    max_shift_ang = np.array([fov_width_ang, fov_height_ang]) * max_shift_fov_fraction
+    
+    # Calculate total displacement magnitude for each frame
+    displacements_ang = np.linalg.norm(shifts_ang, axis=1)
+    max_displacement_ang = np.linalg.norm(max_shift_ang)
+    
+    # Return indices where displacement exceeds threshold
+    return np.where(displacements_ang > max_displacement_ang)[0]
 
 
 def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
