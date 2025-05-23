@@ -206,6 +206,37 @@ def track_patch_com(tilt_dir_name, tilt_name, pixel_nm, binval, tilt_axis_ang, d
             f"$if (-e {tilt_dir_name}/{tilt_name}.resid) patch2imod -s 10 {tilt_dir_name}/{tilt_name}.resid {tilt_dir_name}/{tilt_name}.resmod\n")
         fout.write("$if (-e ./savework) ./savework\n")
 
+def make_ali_stack_com(tilt_dir_name, tilt_name, tilt_extension, binval, dimX, dimY):
+    """
+    final_ali_stack
+    """
+    dimX = int(dimX)
+    dimY = int(dimY)
+    binval = int(binval)
+
+    tilt_dir_name = str(tilt_dir_name)
+    bin_x = int(dimX / binval)
+    bin_y = int(dimY / binval)
+
+    with open(tilt_dir_name + "/" + "newst_ali.com", "w") as fout:
+        fout.write(f'# The offset argument should be 0,0 for no offset, 0,300 to take an area\n')
+        fout.write(f'# 300 pixels above the center, etc.\n')
+        fout.write(f'#\n')
+        fout.write(f'$newstack -StandardInput\n')
+        fout.write(f'InputFile   {tilt_dir_name}/{tilt_name}.{tilt_extension}\n')
+        fout.write(f'OutputFile  {tilt_dir_name}/{tilt_name}.ali\n')
+        fout.write(f'TransformFile   {tilt_dir_name}/{tilt_name}.xf\n')
+        fout.write(f'TaperAtFill 1,0\n')
+        fout.write(f'AdjustOrigin\n')
+        fout.write(f'SizeToOutputInXandY {bin_x},{bin_y}\n')
+        fout.write(f'OffsetsInXandY  0.0,0.0\n')
+        fout.write(f'#DistortionField    .idf\n')
+        fout.write(f'ImagesAreBinned 1.0\n')
+        fout.write(f'BinByFactor {binval}\n')
+        fout.write(f'AntialiasFilter -1\n')
+        fout.write(f'#GradientFile   {tilt_dir_name}/{tilt_name}.maggrad\n')
+        fout.write(f'$if (-e ./savework) ./savework\n')
+
 
 def make_tomogram(tilt_dir_name, tilt_name, tilt_extension, dimX, dimY, binval, thickness):
     dimX = int(dimX)

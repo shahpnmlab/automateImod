@@ -70,8 +70,9 @@ def align_tilts(
             tilt_dir_name=ts.tilt_dir_name,
             tilt_name=ts.basename,
             tilt_extension=ts.extension,
-            binval=ts.binval,
+            binval=ts.binval
         )
+
         coms.make_patch_com(
             tilt_dir_name=ts.tilt_dir_name,
             tilt_name=ts.basename,
@@ -88,6 +89,14 @@ def align_tilts(
             dimX=ts.dimX,
             dimY=ts.dimY,
         )
+
+        coms.make_ali_stack_com(
+            tilt_dir_name=ts.tilt_dir_name,
+            tilt_name=ts.basename,
+            tilt_extension=ts.extensions,
+            binval=ts.binval,
+            dimX=ts.dimX,
+            dimY=ts.dimY)
 
         original_tilt_frames = ts.tilt_frames.copy()
         original_tilt_angles = ts.tilt_angles.copy()
@@ -250,6 +259,8 @@ def align_tilts(
         if resid_error is not None:
             print(f"The final alignment accuracy is:")
             print(f"Residual error (nm): {resid_error} (SD: {sd})")
+            print(f"Building an aligned stack for {ts.basename}..-")
+            coms.execute_com_file(f"{str(ts.tilt_dir_name)}/newst_ali.com", catpure_output=False)
         else:
             print("Could not retrieve final alignment statistics.")
     else:
