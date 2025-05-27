@@ -37,6 +37,9 @@ def align_tilts(
     max_attempts: int = typer.Option(
         3, help="How many attempts before quitting refinement"
     ),
+    max_shift_nm: float = typer.Option(None, help="Maximum acceptable absolute shift in nm (default: 0.2 * min(width_nm, height_nm))"),
+    max_shift_rate: float = typer.Option(50.0, help="Maximum acceptable shift rate in nm/degree (default: 50.0)"),
+    use_statistical_analysis: bool = typer.Option(True, help="Whether to use statistical outlier detection for shifts (default: True)"),
 ):
     """
     Perform patch-based tilt series tracking using IMOD routines
@@ -145,9 +148,12 @@ def align_tilts(
 
             large_shift_indices = utils.detect_large_shifts_afterxcorr(
                 coarse_align_prexg=f"{ts.tilt_dir_name}/{ts.basename}.prexg",
-                pixel_size_nm=ts.pixel_size / 10,
+                pixel_size_nm=ts.pixel_size / 10,  # Assuming ts.pixel_size is in Angstroms
                 image_size=(ts.dimX, ts.dimY),
                 min_fov_fraction=min_fov,
+                max_shift_nm=max_shift_nm,
+                max_shift_rate=max_shift_rate,
+                use_statistical_analysis=use_statistical_analysis,
             )
 
             if len(large_shift_indices) > 0:

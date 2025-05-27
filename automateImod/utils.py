@@ -3,6 +3,7 @@ import subprocess
 import mrcfile
 import numpy as np
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import automateImod.calc as calc
 import automateImod.pio as io
@@ -68,40 +69,200 @@ import automateImod.pio as io
 #
 #    return large_shift_indices
 
-def detect_large_shifts_afterxcorr(coarse_align_prexg, pixel_size_nm, image_size, min_fov_fraction=0.7):
+def detect_large_shifts_afterxcorr(
+    coarse_align_prexg, 
+    pixel_size_nm, 
+    image_size,
+    min_fov_fraction=0.8,
+    max_shift_nm=None,  # New parameter
+    max_shift_rate=50.0,
+    outlier_threshold=3.0,
+    min_acceptable_overlap=0.5,
+    use_statistical_analysis=True  # New parameter
+):
     """
-    Detect frames with shifts exceeding reasonable alignment tolerances.
+    Robust detection of problematic shifts using multiple criteria.
     
     Args:
-        coarse_align_prexg (str): Path to prexg file
-        pixel_size_nm (float): Pixel size in nm
-        image_size (tuple): Image dimensions (width, height) in pixels
-        min_fov_fraction (float): Minimum required overlap fraction (default: 0.7)
-        
+        coarse_align_prexg: Path to prexg file
+        pixel_size_nm: Pixel size in nm
+        image_size: (width, height) in pixels
+        min_fov_fraction: Minimum overlap for normal operation (default: 0.8)
+        max_shift_nm: Maximum acceptable shift in nm (default: None, auto-calculated)
+        max_shift_rate: Maximum acceptable shift rate in nm/degree (default: 50.0)
+        outlier_threshold: Statistical outlier threshold in MAD units (default: 3.0)
+        min_acceptable_overlap: Absolute minimum overlap required (default: 0.5)
+        use_statistical_analysis: Whether to use statistical outlier detection (default: True)
+    
     Returns:
-        np.ndarray: Indices of frames with excessive shifts
+        list: Indices of problematic views
     """
-    pixel_size_ang = pixel_size_nm * 10
-    shifts_pixels = np.loadtxt(coarse_align_prexg, usecols=(-2, -1))
-    shifts_ang = shifts_pixels * pixel_size_ang
+    # Ensure numpy is imported, as it's used extensively.
+    # The user confirmed 'np' is already imported.
+    # Ensure Path is imported from pathlib
+    # from pathlib import Path # This is now added at the top of the file
+
+    pixel_size_ang = pixel_size_nm * 10  # This line is in the provided code, but Angstroms are not used. Retaining for now.
     
-    # Calculate FOV dimensions in Angstroms
-    fov_width_ang = image_size[0] * pixel_size_ang
-    fov_height_ang = image_size[1] * pixel_size_ang
+    # Read prexg data
+    # Assuming prexg_data uses the last two columns for shifts, as in the original code.
+    prexg_data = np.loadtxt(coarse_align_prexg) 
+    shifts_pixels = prexg_data[:, -2:]
+    shifts_nm = shifts_pixels * pixel_size_nm
     
-    # Convert min_fov_fraction to max allowable shift fraction
-    # For practical alignment QC, use a much smaller fraction than geometric limit
-    max_shift_fov_fraction = (1 - min_fov_fraction) * 0.1  # Scale down for realistic thresholds
+    # Calculate shift magnitudes
+    shift_magnitudes = np.sqrt(shifts_nm[:, 0]**2 + shifts_nm[:, 1]**2)
     
-    # Calculate maximum allowed shift
-    max_shift_ang = np.array([fov_width_ang, fov_height_ang]) * max_shift_fov_fraction
+    # Image dimensions
+    width_nm = image_size[0] * pixel_size_nm
+    height_nm = image_size[1] * pixel_size_nm
     
-    # Calculate total displacement magnitude for each frame
-    displacements_ang = np.linalg.norm(shifts_ang, axis=1)
-    max_displacement_ang = np.linalg.norm(max_shift_ang)
+    # Auto-calculate max_shift_nm if not provided
+    # Default to 20% of the smaller dimension
+    if max_shift_nm is None:
+        max_shift_nm = 0.2 * min(width_nm, height_nm)
     
-    # Return indices where displacement exceeds threshold
-    return np.where(displacements_ang > max_displacement_ang)[0]
+    # Calculate overlap fractions
+    x_overlaps = 1 - np.abs(shifts_nm[:, 0]) / width_nm
+    y_overlaps = 1 - np.abs(shifts_nm[:, 1]) / height_nm
+    min_overlaps = np.minimum(x_overlaps, y_overlaps)
+    
+    problematic_views = set()
+    
+    # Criterion 1: Absolute minimum overlap
+    # This catches catastrophic failures
+    abs_bad_indices = np.where(min_overlaps < min_acceptable_overlap)[0]
+    problematic_views.update(abs_bad_indices)
+    
+    # Criterion 2: Maximum shift magnitude
+    # Simple absolute threshold
+    max_shift_indices = np.where(shift_magnitudes > max_shift_nm)[0]
+    problematic_views.update(max_shift_indices)
+    
+    # Criterion 3: Shift rate analysis
+    # Shifts should change smoothly with tilt angle
+    large_jump_indices = [] # Initialize for diagnostic printing
+    if len(shifts_nm) > 2:
+        # Calculate shift differences between consecutive views
+        shift_diffs = np.diff(shifts_nm, axis=0)
+        shift_diff_magnitudes = np.sqrt(shift_diffs[:, 0]**2 + shift_diffs[:, 1]**2)
+        
+        # Assuming ~1-2 degree tilt increment
+        # Views with sudden large jumps are suspicious
+        jump_threshold = max_shift_rate * 2.0  # Allow 2 degrees worth of shift
+        large_jump_indices = np.where(shift_diff_magnitudes > jump_threshold)[0]
+        
+        # Mark both views involved in the jump
+        for idx in large_jump_indices:
+            problematic_views.add(idx)
+            problematic_views.add(idx + 1)
+    
+    # Criterion 4: Statistical outliers (optional)
+    statistical_outlier_indices = [] # Initialize for diagnostic printing
+    if use_statistical_analysis:
+        # Only apply if we have enough "good" views
+        # Create a list of indices that are not yet problematic
+        current_good_indices = list(set(range(len(min_overlaps))) - problematic_views)
+        remaining_overlaps = min_overlaps[current_good_indices]
+        
+        if len(remaining_overlaps) > 5:  # Need enough data for statistics
+            # Use robust statistics on the remaining views
+            median_overlap = np.median(remaining_overlaps)
+            mad = np.median(np.abs(remaining_overlaps - median_overlap)) # Median Absolute Deviation
+            
+            # Only flag statistical outliers if they also violate FOV criterion
+            if mad > 0: # Avoid division by zero if all remaining overlaps are identical
+                # Convert MAD to estimated standard deviation for Gaussian data
+                # The factor 1.4826 is specific to normally distributed data
+                # but is a common heuristic.
+                threshold = median_overlap - outlier_threshold * mad * 1.4826 
+                
+                # Find outliers among ALL views, not just current_good_indices,
+                # but only those that also violate the min_fov_fraction.
+                # This ensures we only flag views that are both statistically unusual
+                # AND have low overlap.
+                statistical_outlier_indices_bool = (min_overlaps < threshold) & (min_overlaps < min_fov_fraction)
+                statistical_outlier_indices = np.where(statistical_outlier_indices_bool)[0]
+                problematic_views.update(statistical_outlier_indices)
+    
+    # Criterion 5: Consistency check
+    # If a view is surrounded by good views but has large shift, it's likely bad
+    # This requires at least 3 views to have a "middle" view, and 2 more for context, total 5.
+    # The original code had len(shifts_nm) > 4, which means at least 5 views.
+    if len(shifts_nm) > 4: # Ensure there are enough views for prev, curr, next logic
+        for i in range(1, len(shifts_nm) - 1): # Iterate from the second to the second-to-last view
+            if i not in problematic_views: # Only consider views not already flagged
+                # Check if this view's shift is very different from neighbors
+                # This check assumes that problematic_views does not change during this loop
+                # which is true for this implementation.
+                
+                # Check if neighbors are already problematic. If so, this view is harder to judge.
+                # For simplicity, the original logic didn't explicitly exclude if neighbors were bad.
+                # Let's stick to that unless it proves problematic.
+                prev_shift = shifts_nm[i-1]
+                curr_shift = shifts_nm[i]
+                next_shift = shifts_nm[i+1]
+                
+                # Expected shift based on linear interpolation of immediate neighbors
+                expected_shift = (prev_shift + next_shift) / 2.0 # Use floating point division
+                deviation = np.linalg.norm(curr_shift - expected_shift)
+                
+                # If deviation is large AND overlap is below normal threshold (min_fov_fraction)
+                # max_shift_rate here is used as a proxy for large deviation.
+                # This might need tuning or a separate parameter.
+                if deviation > max_shift_rate and min_overlaps[i] < min_fov_fraction:
+                    problematic_views.add(i)
+    
+    # Print diagnostic information
+    # Use Path(coarse_align_prexg).name for cleaner output, as in the example
+    print(f"\nShift analysis for {Path(coarse_align_prexg).name}:")
+    print(f"  Total views: {len(shifts_nm)}")
+    print(f"  Maximum shift threshold: {max_shift_nm:.1f} nm")
+    print(f"  Problematic views found: {len(problematic_views)}")
+    if len(problematic_views) > 0:
+        print(f"  Indices: {sorted(list(problematic_views))}")
+        # For breakdown, we need to re-evaluate conditions if we want exact counts per criterion
+        # as a view could be caught by multiple. The current *_indices lists are fine for this.
+        print(f"  Criteria breakdown:")
+        # abs_bad_indices was defined earlier
+        if len(abs_bad_indices) > 0:
+             print(f"    - Absolute minimum overlap violations ({min_acceptable_overlap*100}%): {len(abs_bad_indices)} views")
+        # max_shift_indices was defined earlier
+        if len(max_shift_indices) > 0:
+            print(f"    - Maximum shift exceeded ({max_shift_nm:.1f} nm): {len(max_shift_indices)} views")
+            # This part of the original diagnostic printing was slightly different,
+            # iterating through `max_shift_bad` (which I called `max_shift_indices`).
+            # Let's replicate that specific detail for consistency.
+            for idx in max_shift_indices: # Iterate through indices caught by this criterion
+                if idx in problematic_views: # Check if it's still considered problematic overall
+                    print(f"      View {idx}: Shift {shift_magnitudes[idx]:.1f} nm")
+        
+        # large_jump_indices was defined earlier for Criterion 3
+        # The original code checked len(shifts_nm) > 2 before printing this part.
+        if len(shifts_nm) > 2 and len(large_jump_indices) > 0:
+            # This counts transitions (pairs of views), not individual views.
+            print(f"    - Large shift jumps detected: {len(large_jump_indices)} transitions")
+            # The original code did not print details for each jump, so we won't either.
+
+        # statistical_outlier_indices was initialized for Criterion 4
+        if use_statistical_analysis and len(statistical_outlier_indices) > 0:
+            # Filter to only those that are in the final problematic_views set.
+            # This is implicitly handled if statistical_outlier_indices is derived correctly.
+            # Let's count how many views flagged by this criterion are in the final set.
+            # This requires re-evaluating the condition or being careful about set logic.
+            # The current statistical_outlier_indices is from np.where, so it's a list of indices.
+            # We need to know how many of *these* made it into the final set.
+            # However, the diagnostic in the issue prints based on the length of statistical_outliers
+            # which implies it's the count of views *primarily* caught by this.
+            # Let's refine the diagnostic printing for this part based on how many were *added* by this.
+            # This is tricky because a view could be caught by multiple criteria.
+            # For now, let's just report the number of views that met this criterion.
+            # The provided code used `statistical_outliers` which was np.where(...)[0].
+            # So, `len(statistical_outlier_indices)` should be the count of views that met the statistical criteria.
+            print(f"    - Statistical outliers: {len(statistical_outlier_indices)} views")
+            # The original did not print details for each statistical outlier.
+
+    return sorted(list(problematic_views))
 
 
 def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
