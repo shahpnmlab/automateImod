@@ -8,66 +8,6 @@ import automateImod.calc as calc
 import automateImod.pio as io
 
 
-# def detect_large_shifts_afterxcorr(coarse_align_prexg, shifts_threshold=1.15):
-#     prexg_data = []
-#     with open(coarse_align_prexg, "r") as file:
-#         for line in file:
-#             numbers = [float(num) for num in line.split()]
-#             prexg_data.append(numbers[-2:])
-#     prexg_data = np.array(prexg_data)
-#     px_shift_dist = np.sqrt(np.sum(np.square(prexg_data), axis=1))
-#     median_px_shift = np.median(px_shift_dist)
-#     whoisbigger = px_shift_dist / median_px_shift
-#     upper_bound = np.mean(whoisbigger) + (shifts_threshold * np.std(whoisbigger))
-#     large_shift_indices = np.where(whoisbigger > upper_bound)[0].tolist()
-#     return large_shift_indices
-#     # else:
-#     #      return np.array([])
-
-
-#def detect_large_shifts_afterxcorr(
-#    coarse_align_prexg, pixel_size_nm, image_size, min_fov_fraction=0.7
-#):
-#    """
-#    Detect frames that have shifted beyond the acceptable field of view (FOV).
-#
-#    Args:
-#        coarse_align_prexg (str): Path to the prexg file containing shift information
-#        pixel_size_nm (float): Pixel size in nm
-#        image_size (tuple): Image dimensions (width, height) in pixels
-#        min_fov_fraction (float): Minimum required overlap as a fraction of FOV (default: 0.7)
-#
-#    Returns:
-#        list: Indices of frames with unacceptable shifts
-#    """
-#    pixel_size_ang = pixel_size_nm / 10
-#    prexg_data = []
-#    with open(coarse_align_prexg, "r") as file:
-#        for line in file:
-#            numbers = [float(num) for num in line.split()]
-#            prexg_data.append(numbers[-2:])  # Last two numbers are X,Y shifts
-#
-#    prexg_data = np.array(prexg_data)
-#
-#    # Convert shifts to Angstroms
-#    shifts_ang = prexg_data * pixel_size_ang
-#
-#    # Calculate FOV dimensions in Angstroms
-#    fov_width_ang = image_size[0] * pixel_size_ang
-#    fov_height_ang = image_size[1] * pixel_size_ang
-#
-#    # Calculate maximum allowed shift (as percentage of FOV)
-#    max_shift_x = (1 - min_fov_fraction) * fov_width_ang
-#    max_shift_y = (1 - min_fov_fraction) * fov_height_ang
-#
-#    # Find frames where shifts exceed the maximum allowed in either direction
-#    large_shift_indices = []
-#    for idx, (shift_x, shift_y) in enumerate(shifts_ang):
-#        if abs(shift_x) > max_shift_x or abs(shift_y) > max_shift_y:
-#            large_shift_indices.append(idx)
-#
-#    return large_shift_indices
-
 def detect_large_shifts_afterxcorr(coarse_align_prexg, pixel_size_nm, image_size, min_fov_fraction=0.7):
     """
     Detect frames with shifts exceeding reasonable alignment tolerances.
@@ -287,16 +227,6 @@ def match_partial_filename(string_to_match, target_string):
         print("Could not match string. Check if the file exists.")
         return False
 
-
-# def update_xml_files(xml_file_path):
-#     if xml_file_path.exists():
-#         tree = ET.parse(xml_file_path)
-#         root = tree.getroot()
-#         if 'UnselectFilter' in root.attrib:
-#             root.set('UnselectManual', str(True))
-#             tree.write(xml_file_path)
-#     else:
-#         print(f"XML file {xml_file_path} not found.")
 
 
 def remove_xml_files(xml_file_path):
