@@ -260,7 +260,7 @@ def align_tilts(
         if resid_error is not None:
             print(f"The final alignment accuracy is:")
             print(f"Residual error (nm): {resid_error} (SD: {sd})")
-            print(f"Building an aligned stack for {ts.basename}..-")
+            print(f"Building an aligned stack for {ts.basename}...\n")
             coms.execute_com_file(
                 f"{str(ts.tilt_dir_name)}/newst_ali.com", catpure_output=False
             )
