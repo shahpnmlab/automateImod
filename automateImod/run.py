@@ -93,7 +93,7 @@ def align_tilts(
         coms.make_ali_stack_com(
             tilt_dir_name=ts.tilt_dir_name,
             tilt_name=ts.basename,
-            tilt_extension=ts.extensions,
+            tilt_extension=ts.extension,
             binval=ts.binval,
             dimX=ts.dimX,
             dimY=ts.dimY,
@@ -262,7 +262,7 @@ def align_tilts(
             print(f"Residual error (nm): {resid_error} (SD: {sd})")
             print(f"Building an aligned stack for {ts.basename}...\n")
             coms.execute_com_file(
-                f"{str(ts.tilt_dir_name)}/newst_ali.com", catpure_output=False
+                f"{str(ts.tilt_dir_name)}/newst_ali.com", capture_output=False
             )
         else:
             print("Could not retrieve final alignment statistics.")
