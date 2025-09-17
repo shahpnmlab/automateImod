@@ -2,6 +2,7 @@ import mrcfile
 import starfile
 import mdocfile
 import xml.etree.ElementTree as ET
+import logging
 
 from pydantic import BaseModel
 from typing import Union, List, Optional
@@ -44,12 +45,20 @@ class TiltSeries(BaseModel):
     # Make dimX and dimY optional with None as default
     dimX: Optional[Union[str, int]] = None
     dimY: Optional[Union[str, int]] = None
+    logger: Optional[logging.Logger] = None
 
     class Config:
         arbitrary_types_allowed = True
 
     def __init__(self, **data):
         super().__init__(**data)
+        # If a logger is not provided, create a default one
+        if self.logger is None:
+            self.logger = logging.getLogger(__name__)
+            if not self.logger.handlers:
+                self.logger.addHandler(logging.StreamHandler())
+                self.logger.setLevel(logging.INFO)
+
         if self.path_to_ts_data and self.basename:
             self.tilt_dir_name = Path(self.path_to_ts_data) / self.basename
             self.rawtlt = f"{self.basename}.rawtlt"
@@ -83,12 +92,12 @@ class TiltSeries(BaseModel):
                     self.dimX = mrc.data.shape[-2]
                     self.dimY = mrc.data.shape[-1]
                     self.pixel_size = float(mrc.voxel_size.x)
-                    print(f"Dimensions: {self.dimX} x {self.dimY}")
-                    print(f"Pixel size: {self.pixel_size:.2f} Å")
+                    self.logger.info(f"Dimensions: {self.dimX} x {self.dimY}")
+                    self.logger.info(f"Pixel size: {self.pixel_size:.2f} Å")
             else:
                 raise FileNotFoundError(f"MRC file not found: {mrc_path}")
         except Exception as e:
-            print(f"Error reading MRC file: {e}")
+            self.logger.error(f"Error reading MRC file: {e}")
             # Set default values if reading fails
             self.dimX = None
             self.dimY = None
@@ -102,11 +111,11 @@ class TiltSeries(BaseModel):
                 with mrcfile.open(mrc_path) as mrc:
                     # Convert from nm to angstroms (1 nm = 10 Å)
                     self.pixel_size = mrc.voxel_size.x
-                    print(f"Pixel size: {self.pixel_size:.2f} Å")
+                    self.logger.info(f"Pixel size: {self.pixel_size:.2f} Å")
             else:
                 raise FileNotFoundError(f"MRC file not found: {mrc_path}")
         except Exception as e:
-            print(f"Error reading pixel size: {e}")
+            self.logger.error(f"Error reading pixel size: {e}")
             self.pixel_size = None
 
     def _convert_patch_size(self):
@@ -118,12 +127,12 @@ class TiltSeries(BaseModel):
             binned_px = float(self.pixel_size) * int(self.binval)
             # Calculate pixels and round to nearest integer
             self.patch_size = int(round(patch_ang / binned_px))
-            print(
+            self.logger.info(
                 f"Patch size converted from {patch_ang} Å to {self.patch_size} pixels (binned pixel size: {binned_px:.2f} Å)"
             )
         else:
-            print(
-                "Warning: Could not convert patch size to pixels. Missing pixel size or patch size in angstroms."
+            self.logger.warning(
+                "Could not convert patch size to pixels. Missing pixel size or patch size in angstroms."
             )
 
     def read_tomostar_file(self):
@@ -145,23 +154,23 @@ class TiltSeries(BaseModel):
                 self.axis_angles = tomostar_data["wrpAxisAngle"]
                 self.doses = tomostar_data["wrpDose"]
 
-                print(
+                self.logger.info(
                     f"Processed {len(self.tilt_frames)} tilt frames from tomostar file."
                 )
             except KeyError as e:
-                print(f"Error reading tomostar file: Missing key {e}")
+                self.logger.error(f"Error reading tomostar file: Missing key {e}")
             except Exception as e:
-                print(f"Error reading tomostar file: {e}")
+                self.logger.error(f"Error reading tomostar file: {e}")
         else:
-            print(f"Could not find {self.tomostar} in {self.path_to_tomostar}.")
+            self.logger.warning(f"Could not find {self.tomostar} in {self.path_to_tomostar}.")
 
     def read_rawtlt_file(self):
         rawtlt_path = self.get_rawtlt_path()
         if rawtlt_path and rawtlt_path.exists():
             self.tilt_angles = np.loadtxt(rawtlt_path)
-            print(f"Loaded {len(self.tilt_angles)} tilt angles from rawtlt file.")
+            self.logger.info(f"Loaded {len(self.tilt_angles)} tilt angles from rawtlt file.")
         else:
-            print(f"Could not find {self.rawtlt} in {self.tilt_dir_name}.")
+            self.logger.warning(f"Could not find {self.rawtlt} in {self.tilt_dir_name}.")
 
     def read_mdoc_file(self):
         mdoc_path = self.get_mdoc_path()
@@ -171,9 +180,9 @@ class TiltSeries(BaseModel):
                 self.tilt_frames = (
                     md["SubFramePath"].apply(lambda x: Path(x).name).tolist()
                 )
-            print(f"Processed {len(self.tilt_frames)} tilt frames from mdoc file.")
+            self.logger.info(f"Processed {len(self.tilt_frames)} tilt frames from mdoc file.")
         else:
-            print(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
+            self.logger.warning(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
 
     def get_extension(self):
         if self.tilt_dir_name:  # Ensure tilt_dir_name is not None
@@ -268,11 +277,11 @@ class TiltSeries(BaseModel):
                     float(x) for x in root.find("AxisOffsetY").text.split()
                 ]
 
-                print("Successfully parsed XML file.")
+                self.logger.info("Successfully parsed XML file.")
             except Exception as e:
-                print(f"Error reading XML file: {e}")
+                self.logger.error(f"Error reading XML file: {e}")
         else:
-            print(f"Could not find {self.xml} in {self.path_to_xml_data}.")
+            self.logger.warning(f"Could not find {self.xml} in {self.path_to_xml_data}.")
 
 
 class Tomogram(BaseModel):

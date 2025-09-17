@@ -3,15 +3,39 @@ import subprocess
 import mrcfile
 import numpy as np
 from pathlib import Path
+import logging
 
 import automateImod.calc as calc
 import automateImod.pio as io
+
+
+def setup_logging(log_file_path: Path):
+    """Configure logging to write to a file."""
+    # Get a logger specific to the tilt series (using the file path as a key)
+    logger = logging.getLogger(str(log_file_path))
+    logger.setLevel(logging.INFO)
+
+    # Prevent handlers from being added multiple times
+    if not logger.handlers:
+        # Create a file handler
+        file_handler = logging.FileHandler(log_file_path, mode='w')
+        file_handler.setLevel(logging.INFO)
+
+        # Create a formatter and set it for the handler
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+
+        # Add the handler to the logger
+        logger.addHandler(file_handler)
+
+    return logger
 
 
 def detect_large_shifts_afterxcorr(
     coarse_align_prexg,
     pixel_size_nm,
     image_size,
+    logger,
     min_fov_fraction=0.8,
     max_shift_nm=None,  # New parameter
     max_shift_rate=50.0,
@@ -26,6 +50,7 @@ def detect_large_shifts_afterxcorr(
         coarse_align_prexg: Path to prexg file
         pixel_size_nm: Pixel size in nm
         image_size: (width, height) in pixels
+        logger: The logger object.
         min_fov_fraction: Minimum overlap for normal operation (default: 0.8)
         max_shift_nm: Maximum acceptable shift in nm (default: None, auto-calculated)
         max_shift_rate: Maximum acceptable shift rate in nm/degree (default: 50.0)
@@ -158,22 +183,22 @@ def detect_large_shifts_afterxcorr(
 
     # Print diagnostic information
     # Use Path(coarse_align_prexg).name for cleaner output, as in the example
-    print(f"\nShift analysis for {Path(coarse_align_prexg).name}:")
-    print(f"  Total views: {len(shifts_nm)}")
-    print(f"  Maximum shift threshold: {max_shift_nm:.1f} nm")
-    print(f"  Problematic views found: {len(problematic_views)}")
+    logger.info(f"\nShift analysis for {Path(coarse_align_prexg).name}:")
+    logger.info(f"  Total views: {len(shifts_nm)}")
+    logger.info(f"  Maximum shift threshold: {max_shift_nm:.1f} nm")
+    logger.info(f"  Problematic views found: {len(problematic_views)}")
     if len(problematic_views) > 0:
-        print(f"  Indices: {sorted(list(problematic_views))}")
+        logger.info(f"  Indices: {sorted(list(problematic_views))}")
         # For breakdown, we need to re-evaluate conditions if we want exact counts per criterion
         # as a view could be caught by multiple. The current *_indices lists are fine for this.
-        print(f"  Criteria breakdown:")
+        logger.info(f"  Criteria breakdown:")
         # abs_bad_indices was defined earlier
         if len(abs_bad_indices) > 0:
-            print(
+            logger.info(
                 f"    - Absolute minimum overlap violations ({min_acceptable_overlap*100}%): {len(abs_bad_indices)} views"
             )
         if len(max_shift_indices) > 0:
-            print(
+            logger.info(
                 f"    - Maximum shift exceeded ({max_shift_nm:.1f} nm): {len(max_shift_indices)} views"
             )
             for (
@@ -182,20 +207,20 @@ def detect_large_shifts_afterxcorr(
                 if (
                     idx in problematic_views
                 ):  # Check if it's still considered problematic overall
-                    print(f"      View {idx}: Shift {shift_magnitudes[idx]:.1f} nm")
+                    logger.info(f"      View {idx}: Shift {shift_magnitudes[idx]:.1f} nm")
 
         # large_jump_indices was defined earlier for Criterion 3
         # The original code checked len(shifts_nm) > 2 before printing this part.
         if len(shifts_nm) > 2 and len(large_jump_indices) > 0:
             # This counts transitions (pairs of views), not individual views.
-            print(
+            logger.info(
                 f"    - Large shift jumps detected: {len(large_jump_indices)} transitions"
             )
             # The original code did not print details for each jump, so we won't either.
 
         # statistical_outlier_indices was initialized for Criterion 4
         if use_statistical_analysis and len(statistical_outlier_indices) > 0:
-            print(
+            logger.info(
                 f"    - Statistical outliers: {len(statistical_outlier_indices)} views"
             )
 
@@ -250,7 +275,7 @@ def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
     )
 
 
-def get_alignment_error(tilt_dir_name):
+def get_alignment_error(tilt_dir_name, logger):
     known_unknown_ratio = None
     resid_err = None
     sd = None
@@ -266,23 +291,23 @@ def get_alignment_error(tilt_dir_name):
                     sd = a1[6]
 
         if known_unknown_ratio is None or resid_err is None or sd is None:
-            print("Warning: Could not find all alignment statistics in the log file.")
+            logger.warning("Could not find all alignment statistics in the log file.")
 
         return known_unknown_ratio, resid_err, sd
 
     except Exception as e:
-        print(f"Error reading alignment log: {e}")
+        logger.error(f"Error reading alignment log: {e}")
         return None, None, None
 
 
-def write_ta_coords_log(tilt_dir_name):
+def write_ta_coords_log(tilt_dir_name, logger):
     with open(f"{str(tilt_dir_name)}/taCoordinates.log", "w") as ali_log:
         sbp_cmd = ["alignlog", "-c", f"{str(tilt_dir_name)}/align_patch.log"]
         write_taCoord_log = subprocess.run(
             sbp_cmd, stdout=ali_log, stderr=subprocess.PIPE, text=True
         )
-        print(write_taCoord_log.stdout)
-        print(write_taCoord_log.stderr)
+        logger.info(write_taCoord_log.stdout)
+        logger.error(write_taCoord_log.stderr)
 
 def improve_bad_alignments(tilt_dir_name, tilt_name):
     tilt_dir_name = str(tilt_dir_name)
@@ -334,7 +359,7 @@ def improve_bad_alignments(tilt_dir_name, tilt_name):
 
 
 def detect_dark_tilts(
-    ts_data, ts_tilt_angles, brightness_factor=0.65, variance_factor=0.1
+    ts_data, ts_tilt_angles, logger, brightness_factor=0.65, variance_factor=0.1
 ):
     # Identify the reference image, typically at or near 0 tilt
     tilt_series_mid_point_idx = calc.find_symmetric_tilt_reference(ts_tilt_angles)
@@ -375,20 +400,20 @@ def swap_fast_slow_axes(tilt_dirname, tilt_name):
         overwrite=True,
     )
 
-def match_partial_filename(string_to_match, target_string):
+def match_partial_filename(string_to_match, target_string, logger):
     if string_to_match in target_string:
         return True
     else:
-        print("Could not match string. Check if the file exists.")
+        logger.error("Could not match string. Check if the file exists.")
         return False
 
-def remove_xml_files(xml_file_path):
+def remove_xml_files(xml_file_path, logger):
     if xml_file_path.exists():
         if xml_file_path.exists():
             backup_file_path = xml_file_path.with_suffix(".xml.bkp")
             shutil.move(xml_file_path, backup_file_path)
         else:
-            print(f"XML file {xml_file_path} not found.")
+            logger.warning(f"XML file {xml_file_path} not found.")
 
 
 if __name__ == "__main__":
