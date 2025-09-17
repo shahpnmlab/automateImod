@@ -22,3 +22,7 @@ dependencies = [
 
 [project.scripts]
 automateImod = "automateImod.run:automateImod"
+
+[tool.setuptools.packages.find]
+include = ["automateImod*"]
+exclude = ["ORIG*"]

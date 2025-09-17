@@ -449,7 +449,7 @@ def run(
         True, help="Use statistical outlier detection for shifts."
     ),
     is_warp_proj: bool = typer.Option(
-        False, "--is-warp-proj", help="Indicates if it is a Warp project."
+        True, "--is-warp-proj", help="Indicates if it is a Warp project."
     ),
     reconstruct: bool = typer.Option(
         False, "--reconstruct", help="Reconstruct tomogram after alignment."
