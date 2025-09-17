@@ -45,7 +45,7 @@ Commands:
 Before staring to use the program make sure that the expected directory structure is followed, which is -
 
 ```commandline
-/path/to/IMOD/
+/path/to/ts_data/
 └── TS_BASENAME/
     ├── TS_BASENAME.{mrc,st}
     └── TS_BASENAME.rawtlt
@@ -57,7 +57,7 @@ Before staring to use the program make sure that the expected directory structur
 The main sub-command that you will want to run is the ```align-tilts``` command
 
 ```commandline
-python -m automateImod.run align-tilts [OPTIONS]
+automateImod run align-tilts [OPTIONS]
 
   Perform patch-based tilt series tracking using IMOD routines
 
@@ -107,7 +107,7 @@ Options:
   --help              Show this message and exit.
 
 ```
-You can briefly review the results of your aligned tilt-series by reconstructing tomograms by running -
+You can review the results of your aligned tilt-series by reconstructing tomograms by running -
 
 ```commandline
 Usage: automateImod reconstruct-tomograms [OPTIONS]
@@ -123,21 +123,24 @@ Options:
 ```
 
 # Changelog 
+### v0.4.5
+- Migrated packaging to `pyproject.toml`.
+- Fixed a bug in `update-warp-xml` that caused incomplete removal of bad tilts from `.tomostar` files.
+- Refactored the `detect_large_shifts_afterxcorr` function for more robust outlier detection.
+- Updated documentation for new command-line arguments.
+
 ### v0.4.3
 - Introduction of `--min-fov` arg for more consistent removal of aberrant views (à la
 [WarpTools](https://github.com/warpem/warp/tree/main)).
 - Relaxed requirement for `.mdoc` files extension to include `.mrc.mdoc` as well.
 - Richer `TiltSeries` class
-
 ### v0.4.2
 - Updates warp xml files by changing the \<frame\>.xml to \<frame\>.xml.bkp
 ### v0.4.1
 - Introduced a dark tilt detection routine to remove these tilts even before performing coarse alignments.
 - Automatic detection of tilt series extension.
 
-
 # TODO
 - Support Relion 5.0 star files at some point.
-- The automateImod.marker file has the wrong tilt indices.
 - Abort alignments if the alignments stats are bad even after throwing out badly tracking tilts
 - Save the outputs to log file
