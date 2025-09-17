@@ -74,10 +74,18 @@ Options:
   --min-fov FLOAT          Minimum required field of view  [default: 0.7]
   --max-attempts INTEGER   How many attempts before quitting refinement
                            [default: 3]
+  --max-shift-nm FLOAT     Maximum acceptable absolute shift in nm (default:
+                           0.2 * min(width_nm, height_nm))
+  --max-shift-rate FLOAT   Maximum acceptable shift rate in nm/degree
+                           (default: 50.0)
+  --use-statistical-analysis / --no-use-statistical-analysis
+                           Whether to use statistical outlier detection for
+                           shifts (default: True)
   --help                   Show this message and exit.
 
 
 ```
+For more robust detection of badly tracking tilts, you can use the `--max-shift-nm`, `--max-shift-rate`, and `--use-statistical-analysis` options. These control the sensitivity of the shift detection algorithm, allowing you to fine-tune the removal of aberrant views based on absolute shift magnitude, rate of shift change, and statistical outliers.
 
 To align multiple series, run it as a bash ```for``` loop, by looping over folders within which the tilt-series data
 resides.
@@ -116,7 +124,7 @@ Options:
 
 # Changelog 
 ### v0.4.3
-- Introduction of `--min_fov` arg for more consistent removal of aberrant views (à la
+- Introduction of `--min-fov` arg for more consistent removal of aberrant views (à la
 [WarpTools](https://github.com/warpem/warp/tree/main)).
 - Relaxed requirement for `.mdoc` files extension to include `.mrc.mdoc` as well.
 - Richer `TiltSeries` class
