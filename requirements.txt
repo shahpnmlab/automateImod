@@ -1,7 +1,0 @@
-mdocfile>=0.2.2
-mrcfile>=1.4.3
-numpy>=1.26.2
-pandas>=2.1.3
-typer>=0.9.0
-pydantic>=2.5.2
-starfile>=0.5.8

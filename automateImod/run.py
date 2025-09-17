@@ -378,6 +378,64 @@ def update_warp_xml(
 
 
 @automateImod.command()
+def generate_alignment_report(
+    ts_proc_dir: Path = typer.Option(
+        ...,
+        help="Directory containing the IMOD processing directories for each tilt series.",
+    ),
+    output_file: Path = typer.Option(
+        "alignment_report.txt", help="Path for the output alignment report."
+    ),
+):
+    """
+    Compile alignment residuals into a report from 'align_patch.log' files.
+    """
+    print(f"Searching for tilt series directories in '{ts_proc_dir}'...")
+
+    ts_dirs = sorted(list(ts_proc_dir.glob("*/")))
+
+    if not ts_dirs:
+        print(f"No tilt series directories found in '{ts_proc_dir}'.")
+        return
+
+    results = []
+    for ts_dir in ts_dirs:
+        if not ts_dir.is_dir():
+            continue
+
+        ts_name = ts_dir.name
+        log_file = ts_dir / "align_patch.log"
+
+        resid_err_val, sd_val, resid_err_wt_val = "N/A", "N/A", "N/A"
+
+        if log_file.is_file():
+            with open(log_file, "r") as f_in:
+                for line in f_in:
+                    if "Residual error mean and sd" in line:
+                        parts = line.split()
+                        if len(parts) >= 7:
+                            resid_err_val = parts[5]
+                            sd_val = parts[6]
+                    if "error weighted mean" in line:
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            resid_err_wt_val = parts[4]
+
+        results.append((ts_name, resid_err_val, sd_val, resid_err_wt_val))
+
+    if not results:
+        print("No alignment logs found to generate a report.")
+        return
+
+    with open(output_file, "w") as f_out:
+        f_out.write("ts_name\tresid_err\tsd\tresid_err_wt\n")
+        for item in results:
+            f_out.write(f"{item[0]}\t{item[1]}\t{item[2]}\t{item[3]}\n")
+
+    print(f"Generated alignment report at: {output_file}")
+
+
+@automateImod.command()
 def reconstruct_tomograms(
     ts_data_path: Path = typer.Option(
         ..., help="directory containing tilt series data"

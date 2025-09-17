@@ -123,6 +123,9 @@ Options:
 ```
 
 # Changelog 
+### v0.4.6
+- Added `generate-alignment-report` command to compile alignment residuals from `align_patch.log` files into a summary report.
+
 ### v0.4.5
 - Migrated packaging to `pyproject.toml`.
 - Fixed a bug in `update-warp-xml` that caused incomplete removal of bad tilts from `.tomostar` files.
