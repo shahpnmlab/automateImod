@@ -1,4 +1,4 @@
-mdocfile>=0.1.0
+mdocfile>=0.2.2
 mrcfile>=1.4.3
 numpy>=1.26.2
 pandas>=2.1.3
