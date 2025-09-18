@@ -83,7 +83,7 @@ def align_tilt_series(
     if not marker_file.exists():
         marker_file.touch()
         logger.info(f"Marker file not detected in {marker_file.parent}\nProcessing...")
-        logger.info("Looking for dark tilts...")
+        logger.info(f"Aligning {ts.basename}: Detecting dark frames")
 
         dark_frame_indices = utils.detect_dark_tilts(
             ts_data=im_data, ts_tilt_angles=ts.tilt_angles, logger=logger
@@ -93,7 +93,7 @@ def align_tilt_series(
             logger.info(
                 f"Detected {len(dark_frame_indices)} dark tilts in {ts.basename}"
             )
-            logger.info("Removing dark tilts...")
+            logger.info(f"Aligning {ts.basename}: Removing dark frames and rebuilding stack")
             utils.remove_bad_tilts(
                 ts=ts,
                 im_data=im_data,
@@ -104,7 +104,7 @@ def align_tilt_series(
             del im_data
             im_data, _, _, _ = pio.read_mrc(ts_path)
         else:
-            logger.info("No dark frames found. Proceeding with coarse alignments...")
+            logger.info("No dark frames found.")
 
         with open(marker_file, "w") as fout:
             fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
@@ -112,7 +112,8 @@ def align_tilt_series(
                 if idx < len(ts.tilt_frames) and idx < len(ts.tilt_angles):
                     frame_name = ts.tilt_frames[idx]
                     fout.write(f"{frame_name},{ts.tilt_angles[idx]},{idx}\n")
-
+        
+        logger.info(f"Aligning {ts.basename}: Running coarse alignment")
         coms.execute_com_file(
             f"{str(ts.tilt_dir_name)}/xcorr_coarse.com", capture_output=False
         )
@@ -135,7 +136,7 @@ def align_tilt_series(
             logger.info(
                 f"Detected {len(large_shift_indices)} badly tracking tilts in {ts.basename}"
             )
-            logger.info("Removing badly tracked tilts...")
+            logger.info(f"Aligning {ts.basename}: Removing bad tilts and rebuilding stack")
 
             original_large_shift_indices = [
                 np.where(np.array(original_tilt_angles) == ts.tilt_angles[idx])[0][0]
@@ -172,7 +173,7 @@ def align_tilt_series(
 
     ts.removed_indices = sorted(set(ts.removed_indices))
 
-    logger.info(f"Performing patch-based alignment on {ts.basename}")
+    logger.info(f"Aligning {ts.basename}: Running fine alignment")
     coms.execute_com_file(
         f"{str(ts.tilt_dir_name)}/xcorr_patch.com", capture_output=False
     )
@@ -194,9 +195,9 @@ def align_tilt_series(
     if known_to_unknown > 10 and resid_error >= 1.5:
         logger.warning(f"Alignment for {ts.basename} is worse than expected.")
         for attempt in range(max_attempts):
-            logger.info(f"Improving alignment, attempt {attempt + 1}")
+            logger.info(f"Aligning {ts.basename}: Improving alignment (attempt {attempt + 1})")
             utils.improve_bad_alignments(
-                tilt_dir_name=ts.tilt_dir_name, tilt_name=ts.basename
+                tilt_dir_name=ts.tilt_dir_name, tilt_name=ts.basename, logger=logger
             )
             coms.execute_com_file(
                 f"{str(ts.tilt_dir_name)}/align_patch.com", capture_output=False
@@ -325,8 +326,12 @@ def reconstruct_tomo(
         thickness=slab_thickness,
     )
 
-    coms.execute_com_file(f"{str(tomo.tilt_dir_name)}/newst_ali.com")
-    coms.execute_com_file(f"{str(tomo.tilt_dir_name)}/tilt_ali.com")
+    coms.execute_com_file(
+        f"{str(tomo.tilt_dir_name)}/newst_ali.com", capture_output=False
+    )
+    coms.execute_com_file(
+        f"{str(tomo.tilt_dir_name)}/tilt_ali.com", capture_output=False
+    )
     utils.swap_fast_slow_axes(tomo.tilt_dir_name, tomo.basename)
 
 

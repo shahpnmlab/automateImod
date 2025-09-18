@@ -18,11 +18,11 @@ def setup_logging(log_file_path: Path):
     # Prevent handlers from being added multiple times
     if not logger.handlers:
         # Create a file handler
-        file_handler = logging.FileHandler(log_file_path, mode='w')
+        file_handler = logging.FileHandler(log_file_path, mode="w")
         file_handler.setLevel(logging.INFO)
 
         # Create a formatter and set it for the handler
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(formatter)
 
         # Add the handler to the logger
@@ -124,7 +124,7 @@ def detect_large_shifts_afterxcorr(
             # Use robust statistics on the remaining views
             median_overlap = np.median(remaining_overlaps)
             mad = np.median(
-                np.abs(remaining_overlaps - median_overlap) 
+                np.abs(remaining_overlaps - median_overlap)
             )  # Median Absolute Deviation
 
             # Only flag statistical outliers if they also violate FOV criterion
@@ -154,8 +154,7 @@ def detect_large_shifts_afterxcorr(
     # The original code had len(shifts_nm) > 4, which means at least 5 views.
     if len(shifts_nm) > 4:  # Ensure there are enough views for prev, curr, next logic
         for i in range(
-            1,
-            len(shifts_nm) - 1
+            1, len(shifts_nm) - 1
         ):  # Iterate from the second to the second-to-last view
             if i not in problematic_views:  # Only consider views not already flagged
                 # Check if this view's shift is very different from neighbors
@@ -207,7 +206,9 @@ def detect_large_shifts_afterxcorr(
                 if (
                     idx in problematic_views
                 ):  # Check if it's still considered problematic overall
-                    logger.info(f"      View {idx}: Shift {shift_magnitudes[idx]:.1f} nm")
+                    logger.info(
+                        f"      View {idx}: Shift {shift_magnitudes[idx]:.1f} nm"
+                    )
 
         # large_jump_indices was defined earlier for Criterion 3
         # The original code checked len(shifts_nm) > 2 before printing this part.
@@ -269,7 +270,7 @@ def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
     # Update the TiltSeries object
     ts.tilt_angles = cleaned_ts_rawtlt
     ts.removed_indices = (
-        sorted(set(ts.removed_indices + bad_idx)) 
+        sorted(set(ts.removed_indices + bad_idx))
         if hasattr(ts, "removed_indices")
         else sorted(bad_idx)
     )
@@ -309,7 +310,8 @@ def write_ta_coords_log(tilt_dir_name, logger):
         logger.info(write_taCoord_log.stdout)
         logger.error(write_taCoord_log.stderr)
 
-def improve_bad_alignments(tilt_dir_name, tilt_name):
+
+def improve_bad_alignments(tilt_dir_name, tilt_name, logger):
     tilt_dir_name = str(tilt_dir_name)
     mod_file = tilt_dir_name + "/" + tilt_name + ".fid"
     mod2txt = tilt_dir_name + "/" + tilt_name + ".txt"
@@ -323,7 +325,11 @@ def improve_bad_alignments(tilt_dir_name, tilt_name):
     goodpoints = goodpoints[0] + 1
 
     # Convert the fiducial model file to a text file and readit in
-    subprocess.run(["model2point", "-contour", mod_file, mod2txt])
+    model2point_cmd = ["model2point", "-contour", mod_file, mod2txt]
+    result = subprocess.run(model2point_cmd, capture_output=True, text=True)
+    logger.info(f"model2point stdout: {result.stdout}")
+    if result.stderr:
+        logger.error(f"model2point stderr: {result.stderr}")
 
     fid_text = np.loadtxt(mod2txt)
     new_good_contours = np.empty((0, 4))
@@ -355,7 +361,10 @@ def improve_bad_alignments(tilt_dir_name, tilt_name):
         mod_file,
     ]
 
-    subprocess.run(point_to_model_cmd)
+    result = subprocess.run(point_to_model_cmd, capture_output=True, text=True)
+    logger.info(f"point2model stdout: {result.stdout}")
+    if result.stderr:
+        logger.error(f"point2model stderr: {result.stderr}")
 
 
 def detect_dark_tilts(
@@ -385,6 +394,7 @@ def detect_dark_tilts(
 
     return dark_frame_indices
 
+
 def swap_fast_slow_axes(tilt_dirname, tilt_name):
     (
         d,
@@ -400,12 +410,14 @@ def swap_fast_slow_axes(tilt_dirname, tilt_name):
         overwrite=True,
     )
 
+
 def match_partial_filename(string_to_match, target_string, logger):
     if string_to_match in target_string:
         return True
     else:
         logger.error("Could not match string. Check if the file exists.")
         return False
+
 
 def remove_xml_files(xml_file_path, logger):
     if xml_file_path.exists():
