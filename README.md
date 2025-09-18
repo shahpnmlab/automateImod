@@ -42,7 +42,7 @@ Each tilt-series should have its own subdirectory within a main data folder.
 The entire alignment, XML update, and reconstruction workflow is handled by the single `run` command. You can process a single tilt-series or a whole folder of them in parallel.
 
 ```commandline
-automateImod run [OPTIONS]
+automateImod [OPTIONS]
 ```
 
 ### Key Arguments
@@ -52,7 +52,7 @@ automateImod run [OPTIONS]
 *   `--n-tasks`: The number of tilt-series to process in parallel. Defaults to 1.
 *   `--ts-tilt-axis`: **(Required)** The tilt axis angle.
 *   `--ts-patch-size`: **(Required)** The size of the patches for tracking, in Angstroms.
-*   `--is-warp-proj`: A flag to indicate that this is a Warp project. If set, the program will update the Warp XML and TomoStar files after alignment.
+*   `--is-warp-proj`: A flag to indicate that this is a Warp project. If set, the program will update the Warp XML and .tomostar files after alignment.
 *   `--reconstruct`: A flag to trigger tomogram reconstruction after alignment.
 *   `--ts-xml-path`: Path to the folder containing Warp XML files (required if `--is-warp-proj` is set).
 *   `--ts-tomostar-path`: Path to the folder containing TomoStar files (required if `--is-warp-proj` is set).
@@ -63,7 +63,7 @@ automateImod run [OPTIONS]
 To process all tilt-series in `/path/to/ts_data` using 4 parallel workers, and also reconstruct binned tomograms:
 
 ```bash
-automateImod run \
+automateImod \
     --ts-data-folder /path/to/ts_data/ \
     --ts-mdoc-path /path/to/MDOCS/ \
     --ts-tilt-axis 84.7 \
@@ -80,11 +80,14 @@ The program features a detailed progress bar that shows the status of each proce
 
 # Changelog
 
-### v0.6.0 (In progress)
-- **Unified Pipeline**: Combined `align-tilts`, `update-warp-xml`, and `reconstruct-tomograms` into a single, unified `run` command.
-- **Parallel Processing**: Integrated `dask.distributed` to enable robust parallel processing of multiple tilt-series, controlled by the `--n-tasks` argument.
+### v0.6.0
+- **Parallel Processing**: Integrated `dask.distributed` to enable robust parallel processing of multiple tilt-series.
 - **Granular Progress Bar**: Implemented a detailed progress bar that shows the real-time status of each alignment step for each tilt-series.
 - **Enhanced Logging**: Improved logging to capture subprocess outputs for better debugging.
+
+### v0.5.0
+- **Unified Pipeline**: Combined `align-tilts`, `update-warp-xml`, and `reconstruct-tomograms` into a single, unified `run` command.
+- **Initial simple dask parallelisation**: implemented and tested, controlled by the `--n-tasks` argument.
 
 ### v0.4.5
 - Migrated packaging to `pyproject.toml`.
