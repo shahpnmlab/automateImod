@@ -2,9 +2,8 @@ import mrcfile
 import typer
 import starfile
 import shutil
-from typing import List, Optional
+from typing import Optional
 from tqdm import tqdm
-import logging
 import os
 
 import automateImod.calc as calc
@@ -17,7 +16,7 @@ import numpy as np
 from pathlib import Path
 from dask.distributed import Client, LocalCluster, as_completed
 
-automateImod = typer.Typer(
+automateimod = typer.Typer(
     no_args_is_help=True, pretty_exceptions_show_locals=False, add_completion=False
 )
 
@@ -372,8 +371,8 @@ def task_reconstruct_tomo(final_stack_result, tomo_bin):
     utils.swap_fast_slow_axes(tomo.tilt_dir_name, tomo.basename)
 
 
-@automateImod.command(no_args_is_help=True)
-def run(
+@automateimod.command(no_args_is_help=True)
+def align_tilts(
     ts_data_folder: Path = typer.Option(
         ...,
         "--ts-data-folder",
@@ -530,5 +529,63 @@ def run(
     cluster.close()
 
 
+@automateimod.command()
+def generate_alignment_report(
+    ts_proc_dir: Path = typer.Option(
+        ...,
+        help="Directory containing the IMOD processing directories for each tilt series.",
+    ),
+    output_file: Path = typer.Option(
+        "alignment_report.txt", help="Path for the output alignment report."
+    ),
+):
+    """
+    Compile alignment residuals into a report from 'align_patch.log' files.
+    """
+    print(f"Searching for tilt series directories in '{ts_proc_dir}'...")
+
+    ts_dirs = sorted(list(ts_proc_dir.glob("*/")))
+
+    if not ts_dirs:
+        print(f"No tilt series directories found in '{ts_proc_dir}'.")
+        return
+
+    results = []
+    for ts_dir in ts_dirs:
+        if not ts_dir.is_dir():
+            continue
+
+        ts_name = ts_dir.name
+        log_file = ts_dir / "align_patch.log"
+
+        resid_err_val, sd_val, resid_err_wt_val = "N/A", "N/A", "N/A"
+
+        if log_file.is_file():
+            with open(log_file, "r") as f_in:
+                for line in f_in:
+                    if "Residual error mean and sd" in line:
+                        parts = line.split()
+                        if len(parts) >= 7:
+                            resid_err_val = parts[5]
+                            sd_val = parts[6]
+                    if "error weighted mean" in line:
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            resid_err_wt_val = parts[4]
+
+        results.append((ts_name, resid_err_val, sd_val, resid_err_wt_val))
+
+    if not results:
+        print("No alignment logs found to generate a report.")
+        return
+
+    with open(output_file, "w") as f_out:
+        f_out.write("ts_name\tresid_err\tsd\tresid_err_wt\n")
+        for item in results:
+            f_out.write(f"{item[0]}\t{item[1]}\t{item[2]}\t{item[3]}\n")
+
+    print(f"Generated alignment report at: {output_file}")
+
+
 if __name__ == "__main__":
-    automateImod()
+    automateimod()

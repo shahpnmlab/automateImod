@@ -18,7 +18,7 @@ Also verify that IMOD is installed in your user account and is in your $PATH. Th
 
 Verify the installation by running:
 ```
-automateImod --help
+automateimod --help
 ```
 
 ## Directory Structure
@@ -42,7 +42,7 @@ Each tilt-series should have its own subdirectory within a main data folder.
 The entire alignment, XML update, and reconstruction workflow is handled by the single `run` command. You can process a single tilt-series or a whole folder of them in parallel.
 
 ```commandline
-automateImod [OPTIONS]
+automateimod align-tilts [OPTIONS]
 ```
 
 ### Key Arguments
@@ -63,7 +63,7 @@ automateImod [OPTIONS]
 To process all tilt-series in `/path/to/ts_data` using 4 parallel workers, and also reconstruct binned tomograms:
 
 ```bash
-automateImod \
+automateimod align-tilts \
     --ts-data-folder /path/to/ts_data/ \
     --ts-mdoc-path /path/to/MDOCS/ \
     --ts-tilt-axis 84.7 \
@@ -73,12 +73,11 @@ automateImod \
     --tomo-bin 4
 ```
 
-### Progress Bar
-
-The program features a detailed progress bar that shows the status of each processing step for each tilt-series when running in parallel. This gives you a real-time view of the alignment progress.
-
-
 # Changelog
+
+### v0.6.1
+- Updated entry-point to `automatedimod` instead of `automateImod`.
+- Summarise alignment accuracies in a tabular form.
 
 ### v0.6.0
 - **Parallel Processing**: Integrated `dask.distributed` to enable robust parallel processing of multiple tilt-series.
