@@ -438,7 +438,7 @@ def align_tilts(
 
     n_cpus = os.cpu_count()
     num_workers = min(n_cpus, n_tasks)
-    cluster = LocalCluster(n_workers=num_workers)
+    cluster = LocalCluster(n_workers=num_workers, dashboard_address=None)
     client = Client(cluster)
 
     print(f"Starting Dask cluster with {num_workers} CPU workers.")
