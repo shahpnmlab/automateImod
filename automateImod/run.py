@@ -516,14 +516,34 @@ def align_tilts(
             futures_map[recon_future.key] = f"{basename}: Reconstruct"
             all_futures.append(recon_future)
 
-    with tqdm(total=len(all_futures), desc="Processing Tilt Series") as pbar:
-        for future in as_completed(all_futures):
+    pbars = {
+        basename: tqdm(
+            total=(5 + (1 if is_warp_proj else 0) + (1 if reconstruct else 0)),
+            desc=basename,
+            position=i,
+        )
+        for i, basename in enumerate(basenames_to_process)
+    }
+
+    future_key_to_basename = {
+        f.key: futures_map.get(f.key).split(":")[0]
+        for f in all_futures
+        if f.key in futures_map
+    }
+
+    for future in as_completed(all_futures):
+        basename = future_key_to_basename.get(future.key)
+        if basename and basename in pbars:
             task_name = futures_map.get(future.key, "Unknown Task")
             if future.status == "finished":
-                pbar.set_description(f"{task_name}")
+                pbars[basename].set_postfix_str(task_name.split(":")[-1].strip())
             else:
-                pbar.set_description(f"Failed {task_name}: {future.exception()}")
-            pbar.update(1)
+                pbars[basename].set_postfix_str("Failed")
+                print(f"\nError in task {task_name}: {future.exception()}")
+            pbars[basename].update(1)
+
+    for pbar in pbars.values():
+        pbar.close()
 
     client.close()
     cluster.close()
