@@ -311,7 +311,7 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
             updated_lines = []
             movie_paths = root.find("MoviePath").text.strip().split("\n")
             for line, movie in zip(lines, movie_paths):
-                frame_name = Path(movie).stem
+                frame_name = Path(movie).name
                 if frame_name not in bad_frames:
                     updated_lines.append(line)
             element.text = "\n" + "\n".join(updated_lines) + "\n"
