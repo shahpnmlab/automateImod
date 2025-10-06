@@ -60,6 +60,10 @@ def task_preprocessing(setup_result):
     original_tilt_frames = ts.tilt_frames.copy()
     original_tilt_angles = ts.tilt_angles.copy()
 
+    # Create mapping from current index to original index
+    # Initially, index i maps to original index i
+    current_to_original_idx = list(range(len(original_tilt_frames)))
+
     dark_frame_indices = utils.detect_dark_tilts(
         ts_data=im_data, ts_tilt_angles=ts.tilt_angles, logger=logger
     )
@@ -76,6 +80,13 @@ def task_preprocessing(setup_result):
             bad_idx=dark_frame_indices,
         )
         ts.removed_indices.extend(dark_frame_indices)
+
+        # Update the mapping: remove the dark frame indices
+        current_to_original_idx = [
+            idx for i, idx in enumerate(current_to_original_idx)
+            if i not in dark_frame_indices
+        ]
+
         del im_data
         im_data, _, _, _ = pio.read_mrc(ts_path)
     else:
@@ -87,11 +98,11 @@ def task_preprocessing(setup_result):
         with open(marker_file, "w") as fout:
             fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
             for idx in dark_frame_indices:
-                if idx < len(ts.tilt_frames) and idx < len(ts.tilt_angles):
-                    frame_name = ts.tilt_frames[idx]
-                    fout.write(f"{frame_name},{ts.tilt_angles[idx]},{idx}\n")
+                if idx < len(original_tilt_frames) and idx < len(original_tilt_angles):
+                    frame_name = original_tilt_frames[idx]
+                    fout.write(f"{frame_name},{original_tilt_angles[idx]},{idx}\n")
 
-    return ts, im_data, original_tilt_angles, original_tilt_frames, logger
+    return ts, im_data, original_tilt_angles, original_tilt_frames, current_to_original_idx, logger
 
 
 def task_coarse_alignment(
@@ -104,7 +115,7 @@ def task_coarse_alignment(
     """Task for coarse alignment and large shift detection."""
     if preprocessing_result is None:
         return None
-    ts, im_data, original_tilt_angles, original_tilt_frames, logger = (
+    ts, im_data, original_tilt_angles, original_tilt_frames, current_to_original_idx, logger = (
         preprocessing_result
     )
     logger.info(f"Aligning {ts.basename}: Running coarse alignment")
@@ -144,10 +155,17 @@ def task_coarse_alignment(
         )
         logger.info(f"Aligning {ts.basename}: Removing bad tilts and rebuilding stack")
 
-        original_large_shift_indices = [
-            np.where(np.array(original_tilt_angles) == ts.tilt_angles[idx])[0][0]
-            for idx in large_shift_indices
-        ]
+        # Map current decimated indices to original indices
+        original_large_shift_indices = []
+        for idx in large_shift_indices:
+            if idx < len(current_to_original_idx):
+                original_idx = current_to_original_idx[idx]
+                original_large_shift_indices.append(original_idx)
+                logger.info(f"Current index {idx} maps to original index {original_idx}")
+            else:
+                logger.error(
+                    f"Current index {idx} is out of range (current stack has {len(current_to_original_idx)} frames)"
+                )
 
         utils.remove_bad_tilts(
             ts=ts,
@@ -166,13 +184,13 @@ def task_coarse_alignment(
         )
         marker_file = ts.tilt_dir_name / "autoImod.marker"
         with open(marker_file, "a") as fout:
-            for idx in original_large_shift_indices:
-                if idx < len(original_tilt_angles) and idx < len(original_tilt_frames):
-                    frame_name = original_tilt_frames[idx]
-                    fout.write(f"{frame_name},{original_tilt_angles[idx]},{idx}\n")
+            for original_idx in original_large_shift_indices:
+                if original_idx < len(original_tilt_angles) and original_idx < len(original_tilt_frames):
+                    frame_name = original_tilt_frames[original_idx]
+                    fout.write(f"{frame_name},{original_tilt_angles[original_idx]},{original_idx}\n")
                 else:
-                    logger.warning(
-                        f"Index {idx} is out of range for original tilt_angles or tilt_frames."
+                    logger.error(
+                        f"Original index {original_idx} is out of range for original tilt_angles or tilt_frames."
                     )
     return ts, logger
 
