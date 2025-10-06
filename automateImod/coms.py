@@ -340,7 +340,7 @@ def make_tomogram(
         fout.write(f"$if (-e ./savework) ./savework\n")
 
 
-def execute_com_file(path_to_com_file, additional_args=None, capture_output=True):
+def execute_com_file(path_to_com_file, additional_args=None, capture_output=True, logger=None):
     """
     Executes a given command using subprocess.
 
@@ -348,6 +348,7 @@ def execute_com_file(path_to_com_file, additional_args=None, capture_output=True
         path_to_com_file (str): self-explanatory
         additional_args (list, optional): Additional arguments for the command.
         capture_output (bool, optional): Whether to capture output or not.
+        logger (logging.Logger, optional): Logger instance for output redirection.
 
     Returns:
         str: The output of the subprocess command, if captured.
@@ -360,7 +361,25 @@ def execute_com_file(path_to_com_file, additional_args=None, capture_output=True
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
         )
         if capture_output:
-            print(result.stdout)
+            if logger:
+                logger.info(result.stdout)
+            else:
+                print(result.stdout)
     except subprocess.CalledProcessError as e:
-        logging.error(f"Error running subprocess command: {e}")
-        print(f"Error: {e.stderr}")
+        error_msg = f"Command failed: {' '.join(e.cmd)}"
+        exit_code_msg = f"Exit code: {e.returncode}"
+        stderr_msg = f"stderr: {e.stderr}"
+        stdout_msg = f"stdout: {e.stdout}"
+
+        if logger:
+            logger.error(error_msg)
+            logger.error(exit_code_msg)
+            logger.error(stderr_msg)
+            logger.error(stdout_msg)
+        else:
+            logging.error(error_msg)
+            logging.error(exit_code_msg)
+            logging.error(stderr_msg)
+            logging.error(stdout_msg)
+
+        raise RuntimeError(f"IMOD command failed: {path_to_com_file}") from e

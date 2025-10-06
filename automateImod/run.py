@@ -121,10 +121,10 @@ def task_coarse_alignment(
         binval=ts.binval,
     )
     coms.execute_com_file(
-        f"{str(ts.tilt_dir_name)}/xcorr_coarse.com", capture_output=False
+        f"{str(ts.tilt_dir_name)}/xcorr_coarse.com", capture_output=False, logger=logger
     )
     coms.execute_com_file(
-        f"{str(ts.tilt_dir_name)}/newst_coarse.com", capture_output=False
+        f"{str(ts.tilt_dir_name)}/newst_coarse.com", capture_output=False, logger=logger
     )
 
     large_shift_indices = utils.detect_large_shifts_afterxcorr(
@@ -159,10 +159,10 @@ def task_coarse_alignment(
         logger.info(f"Redoing coarse alignment with decimated {ts.basename} stack")
 
         coms.execute_com_file(
-            f"{str(ts.tilt_dir_name)}/xcorr_coarse.com", capture_output=False
+            f"{str(ts.tilt_dir_name)}/xcorr_coarse.com", capture_output=False, logger=logger
         )
         coms.execute_com_file(
-            f"{str(ts.tilt_dir_name)}/newst_coarse.com", capture_output=False
+            f"{str(ts.tilt_dir_name)}/newst_coarse.com", capture_output=False, logger=logger
         )
         marker_file = ts.tilt_dir_name / "autoImod.marker"
         with open(marker_file, "a") as fout:
@@ -200,10 +200,10 @@ def task_fine_alignment(coarse_align_result, max_attempts):
         dimY=ts.dimY,
     )
     coms.execute_com_file(
-        f"{str(ts.tilt_dir_name)}/xcorr_patch.com", capture_output=False
+        f"{str(ts.tilt_dir_name)}/xcorr_patch.com", capture_output=False, logger=logger
     )
     coms.execute_com_file(
-        f"{str(ts.tilt_dir_name)}/align_patch.com", capture_output=False
+        f"{str(ts.tilt_dir_name)}/align_patch.com", capture_output=False, logger=logger
     )
     utils.write_ta_coords_log(tilt_dir_name=ts.tilt_dir_name, logger=logger)
 
@@ -227,7 +227,7 @@ def task_fine_alignment(coarse_align_result, max_attempts):
                 tilt_dir_name=ts.tilt_dir_name, tilt_name=ts.basename, logger=logger
             )
             coms.execute_com_file(
-                f"{str(ts.tilt_dir_name)}/align_patch.com", capture_output=False
+                f"{str(ts.tilt_dir_name)}/align_patch.com", capture_output=False, logger=logger
             )
             utils.write_ta_coords_log(tilt_dir_name=ts.tilt_dir_name, logger=logger)
             _, resid_error, sd = utils.get_alignment_error(ts.tilt_dir_name, logger)
@@ -258,7 +258,7 @@ def task_final_stack(fine_align_result):
         dimY=ts.dimY,
     )
     coms.execute_com_file(
-        f"{str(ts.tilt_dir_name)}/newst_ali.com", capture_output=False
+        f"{str(ts.tilt_dir_name)}/newst_ali.com", capture_output=False, logger=logger
     )
     return ts, logger
 
@@ -366,7 +366,7 @@ def task_reconstruct_tomo(final_stack_result, tomo_bin):
         thickness=slab_thickness,
     )
     coms.execute_com_file(
-        f"{str(tomo.tilt_dir_name)}/tilt_ali.com", capture_output=False
+        f"{str(tomo.tilt_dir_name)}/tilt_ali.com", capture_output=False, logger=logger
     )
     utils.swap_fast_slow_axes(tomo.tilt_dir_name, tomo.basename)
 
