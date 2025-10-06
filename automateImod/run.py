@@ -278,9 +278,18 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
         logger.warning(f"{marker_file} does not exist.")
         return
 
+    # Read marker file and get bad frames
     md = pd.read_csv(marker_file, delimiter=",")
-    bad_frames = md["frame_basename"].tolist()
+    bad_frames = set(md["frame_basename"].tolist())
 
+    # Skip if marker file only has header (no bad frames)
+    if len(bad_frames) == 0:
+        logger.info("No frames to remove, skipping XML/tomostar update.")
+        return
+
+    logger.info(f"Removing {len(bad_frames)} frames: {bad_frames}")
+
+    # Update XML file
     xml_file = ts_xml_path / f"{ts.basename}.xml"
     if not xml_file.exists():
         logger.error(f"XML file {xml_file} does not exist.")
@@ -296,40 +305,93 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
 
     tree = ET.parse(xml_file)
     root = tree.getroot()
+
+    # Get MoviePath element first - this is our reference
+    movie_path_element = root.find("MoviePath")
+    if movie_path_element is None:
+        logger.error("MoviePath element not found in XML file.")
+        return
+
+    movie_paths = movie_path_element.text.strip().split("\n")
+    original_count = len(movie_paths)
+    logger.info(f"Original XML has {original_count} views")
+
+    # Build good indices - these are the views to keep
+    good_indices = []
+    removed_count = 0
+    for i, movie in enumerate(movie_paths):
+        frame_name = Path(movie).name
+        if frame_name not in bad_frames:
+            good_indices.append(i)
+        else:
+            removed_count += 1
+            logger.info(f"Removing view {i}: {frame_name}")
+
+    expected_final_count = original_count - len(bad_frames)
+    actual_final_count = len(good_indices)
+
+    if actual_final_count != expected_final_count:
+        logger.warning(
+            f"Mismatch: expected {expected_final_count} views after removal, "
+            f"but got {actual_final_count}. Some frames in marker file may not exist in XML."
+        )
+
+    logger.info(f"Keeping {actual_final_count} views, removed {removed_count} views")
+
+    # Update all elements using the good indices
     elements_to_update = [
+        "Angles",
+        "Dose",
         "UseTilt",
         "AxisAngle",
-        "Angles",
         "AxisOffsetX",
         "AxisOffsetY",
         "MoviePath",
     ]
+
     for element_name in elements_to_update:
         element = root.find(element_name)
         if element is not None:
             lines = element.text.strip().split("\n")
-            updated_lines = []
-            movie_paths = root.find("MoviePath").text.strip().split("\n")
-            for line, movie in zip(lines, movie_paths):
-                frame_name = Path(movie).name
-                if frame_name not in bad_frames:
-                    updated_lines.append(line)
+            if len(lines) != original_count:
+                logger.warning(
+                    f"{element_name} has {len(lines)} entries but MoviePath has {original_count}. "
+                    f"This may cause misalignment."
+                )
+            # Keep only the good indices
+            updated_lines = [lines[i] for i in good_indices if i < len(lines)]
             element.text = "\n" + "\n".join(updated_lines) + "\n"
+            logger.info(f"Updated {element_name}: {len(lines)} -> {len(updated_lines)} entries")
         else:
             logger.warning(f"{element_name} element not found in the XML file.")
+
     tree.write(xml_file, encoding="utf-8", xml_declaration=True)
     logger.info(f"Updated XML file: {xml_file}")
 
+    # Update tomostar file
     tomostar_file = ts_tomostar_path / f"{ts.basename}.tomostar"
     if not tomostar_file.exists():
         logger.error(f"Tomostar file {tomostar_file} does not exist.")
         return
 
     tomostar_data = starfile.read(tomostar_file)
+    original_tomostar_count = len(tomostar_data)
+    logger.info(f"Original tomostar has {original_tomostar_count} entries")
+
     good_mask = (
         ~tomostar_data["wrpMovieName"].apply(lambda x: Path(x).name).isin(bad_frames)
     )
     updated_tomostar_data = tomostar_data[good_mask]
+    final_tomostar_count = len(updated_tomostar_data)
+
+    logger.info(f"Tomostar: {original_tomostar_count} -> {final_tomostar_count} entries")
+
+    if final_tomostar_count != actual_final_count:
+        logger.warning(
+            f"Mismatch between XML ({actual_final_count}) and tomostar ({final_tomostar_count}) "
+            f"final counts. Check for inconsistencies."
+        )
+
     starfile.write(updated_tomostar_data, tomostar_file, overwrite=True)
     logger.info(f"Updated tomostar file: {tomostar_file}")
 
