@@ -82,10 +82,16 @@ def task_preprocessing(setup_result):
         ts.removed_indices.extend(dark_frame_indices)
 
         # Update the mapping: remove the dark frame indices
+        # Keep only the original indices that weren't marked as dark frames
+        dark_frame_indices_set = set(dark_frame_indices)
         current_to_original_idx = [
-            idx for i, idx in enumerate(current_to_original_idx)
-            if i not in dark_frame_indices
+            idx for idx in current_to_original_idx
+            if idx not in dark_frame_indices_set
         ]
+        logger.info(
+            f"After removing {len(dark_frame_indices)} dark frames, "
+            f"current stack has {len(current_to_original_idx)} frames"
+        )
 
         del im_data
         im_data, _, _, _ = pio.read_mrc(ts_path)
