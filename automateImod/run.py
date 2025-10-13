@@ -1,3 +1,4 @@
+import math
 import mrcfile
 import typer
 import starfile
@@ -191,6 +192,7 @@ def task_coarse_alignment(
         pixel_size_nm=ts.pixel_size / 10,
         image_size=(ts.dimX, ts.dimY),
         logger=logger,
+        tilt_angles=ts.tilt_angles,
         min_fov_fraction=min_fov,
         max_shift_nm=max_shift_nm,
         max_shift_rate=max_shift_rate,
@@ -273,6 +275,12 @@ def task_fine_alignment(coarse_align_result, max_attempts):
     )
     utils.write_ta_coords_log(tilt_dir_name=ts.tilt_dir_name, logger=logger)
 
+    initial_contours, initial_points = utils.get_alignment_track_stats(ts.tilt_dir_name)
+    if initial_contours is not None and initial_contours > 0:
+        min_contour_threshold = max(8, int(math.ceil(initial_contours * 0.5)))
+    else:
+        min_contour_threshold = None
+
     known_to_unknown, resid_error, sd = utils.get_alignment_error(
         ts.tilt_dir_name, logger
     )
@@ -284,6 +292,7 @@ def task_fine_alignment(coarse_align_result, max_attempts):
     logger.info(f"Residual error (nm): {resid_error}")
 
     if known_to_unknown > 10 and resid_error >= 1.5:
+        contours_floor_triggered = False
         logger.warning(f"Alignment for {ts.basename} is worse than expected.")
         for attempt in range(max_attempts):
             logger.info(
@@ -296,12 +305,29 @@ def task_fine_alignment(coarse_align_result, max_attempts):
                 f"{str(ts.tilt_dir_name)}/align_patch.com", capture_output=False, logger=logger
             )
             utils.write_ta_coords_log(tilt_dir_name=ts.tilt_dir_name, logger=logger)
+            current_contours, current_points = utils.get_alignment_track_stats(ts.tilt_dir_name)
+            if (
+                min_contour_threshold is not None
+                and current_contours is not None
+                and current_contours < min_contour_threshold
+            ):
+                logger.warning(
+                    "Stopping alignment improvement early: tracked contours dropped from "
+                    f"{initial_contours} to {current_contours}, which is below the safeguard threshold "
+                    f"of {min_contour_threshold}."
+                )
+                contours_floor_triggered = True
+                break
             _, resid_error, sd = utils.get_alignment_error(ts.tilt_dir_name, logger)
             if resid_error is not None and resid_error < 1.5:
                 logger.info(f"Alignment improved. Residual error: {resid_error} nm")
                 break
         else:
             logger.warning("Max realignment attempts reached.")
+        if contours_floor_triggered:
+            logger.warning(
+                "Alignment improvement aborted because too few contours remain to provide reliable statistics."
+            )
 
     logger.info(
         f"Final alignment accuracy: Residual error (nm): {resid_error} (SD: {sd})"

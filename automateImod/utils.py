@@ -36,196 +36,194 @@ def detect_large_shifts_afterxcorr(
     pixel_size_nm,
     image_size,
     logger,
+    tilt_angles,
     min_fov_fraction=0.8,
-    max_shift_nm=None,  # New parameter
+    max_shift_nm=None,
     max_shift_rate=50.0,
     outlier_threshold=3.0,
     min_acceptable_overlap=0.5,
-    use_statistical_analysis=True,  # New parameter
+    use_statistical_analysis=True,
 ):
     """
     Robust detection of problematic shifts using multiple criteria.
 
     Args:
-        coarse_align_prexg: Path to prexg file
-        pixel_size_nm: Pixel size in nm
-        image_size: (width, height) in pixels
-        logger: The logger object.
-        min_fov_fraction: Minimum overlap for normal operation (default: 0.8)
-        max_shift_nm: Maximum acceptable shift in nm (default: None, auto-calculated)
-        max_shift_rate: Maximum acceptable shift rate in nm/degree (default: 50.0)
-        outlier_threshold: Statistical outlier threshold in MAD units (default: 3.0)
-        min_acceptable_overlap: Absolute minimum overlap required (default: 0.5)
-        use_statistical_analysis: Whether to use statistical outlier detection (default: True)
+        coarse_align_prexg: Path to the prexg file.
+        pixel_size_nm: Pixel size in nanometres.
+        image_size: (width, height) in pixels for the aligned stack.
+        logger: Logger used for reporting diagnostics.
+        tilt_angles: Sequence/array of tilt angles corresponding to the views in the stack.
+        min_fov_fraction: Minimum desired overlap fraction before flagging a view.
+        max_shift_nm: Maximum acceptable absolute shift in nm. If None, defaults to 20% of the smaller field dimension.
+        max_shift_rate: Maximum acceptable shift rate in nm/degree.
+        outlier_threshold: Threshold in MAD units for statistical overlap outlier detection.
+        min_acceptable_overlap: Hard lower bound on allowable overlap.
+        use_statistical_analysis: Enable robust statistical screening of overlap values.
 
     Returns:
-        list: Indices of problematic views
+        list[int]: Sorted indices of problematic views.
     """
+    coarse_align_prexg = Path(coarse_align_prexg)
     prexg_data = np.loadtxt(coarse_align_prexg)
+    if prexg_data.ndim == 1:
+        prexg_data = np.atleast_2d(prexg_data)
+    if prexg_data.shape[1] < 2:
+        raise ValueError(
+            f"{coarse_align_prexg} does not contain the expected shift columns."
+        )
+
     shifts_pixels = prexg_data[:, -2:]
-    shifts_nm = shifts_pixels * pixel_size_nm
+    shifts_nm = shifts_pixels * float(pixel_size_nm)
+    shift_magnitudes = np.linalg.norm(shifts_nm, axis=1)
 
-    # Calculate shift magnitudes
-    shift_magnitudes = np.sqrt(shifts_nm[:, 0] ** 2 + shifts_nm[:, 1] ** 2)
+    width_nm = float(image_size[0]) * float(pixel_size_nm)
+    height_nm = float(image_size[1]) * float(pixel_size_nm)
 
-    # Image dimensions
-    width_nm = image_size[0] * pixel_size_nm
-    height_nm = image_size[1] * pixel_size_nm
-
-    # Auto-calculate max_shift_nm if not provided
-    # Default to 20% of the smaller dimension
     if max_shift_nm is None:
         max_shift_nm = 0.2 * min(width_nm, height_nm)
 
-    # Calculate overlap fractions
     x_overlaps = 1 - np.abs(shifts_nm[:, 0]) / width_nm
     y_overlaps = 1 - np.abs(shifts_nm[:, 1]) / height_nm
     min_overlaps = np.minimum(x_overlaps, y_overlaps)
 
+    tilt_angles = np.asarray(tilt_angles, dtype=float)
+    if tilt_angles.shape[0] != shifts_nm.shape[0]:
+        raise ValueError(
+            "Number of tilt angles does not match number of views in the prexg file."
+        )
+
     problematic_views = set()
+    breakdown = {}
 
-    # Criterion 1: Absolute minimum overlap
-    # This catches catastrophic failures
     abs_bad_indices = np.where(min_overlaps < min_acceptable_overlap)[0]
-    problematic_views.update(abs_bad_indices)
+    if abs_bad_indices.size:
+        problematic_views.update(abs_bad_indices.tolist())
+    breakdown["min_overlap"] = abs_bad_indices
 
-    # Criterion 2: Maximum shift magnitude
-    # Simple absolute threshold
     max_shift_indices = np.where(shift_magnitudes > max_shift_nm)[0]
-    problematic_views.update(max_shift_indices)
+    if max_shift_indices.size:
+        problematic_views.update(max_shift_indices.tolist())
+    breakdown["max_shift"] = max_shift_indices
 
-    # Criterion 3: Shift rate analysis
-    # Shifts should change smoothly with tilt angle
-    large_jump_indices = []  # Initialize for diagnostic printing
-    if len(shifts_nm) > 2:
-        # Calculate shift differences between consecutive views
+    rate_exceed_pairs = np.array([], dtype=int)
+    shift_rates = np.array([], dtype=float)
+    delta_angles = np.array([], dtype=float)
+
+    if shifts_nm.shape[0] > 1:
         shift_diffs = np.diff(shifts_nm, axis=0)
-        shift_diff_magnitudes = np.sqrt(shift_diffs[:, 0] ** 2 + shift_diffs[:, 1] ** 2)
+        shift_diff_magnitudes = np.linalg.norm(shift_diffs, axis=1)
 
-        # Assuming ~1-2 degree tilt increment
-        # Views with sudden large jumps are suspicious
-        jump_threshold = max_shift_rate * 2.0  # Allow 2 degrees worth of shift
-        large_jump_indices = np.where(shift_diff_magnitudes > jump_threshold)[0]
+        delta_angles = np.abs(np.diff(tilt_angles))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            shift_rates = np.divide(
+                shift_diff_magnitudes,
+                delta_angles,
+                out=np.full_like(shift_diff_magnitudes, np.nan),
+                where=delta_angles > 0,
+            )
 
-        # Mark both views involved in the jump
-        for idx in large_jump_indices:
-            problematic_views.add(idx)
-            problematic_views.add(idx + 1)
+        if max_shift_rate is not None:
+            jump_thresholds_nm = max_shift_rate * delta_angles
+            rate_exceed_pairs = np.where(
+                (delta_angles > 0) & (shift_diff_magnitudes > jump_thresholds_nm)
+            )[0]
+            for idx in rate_exceed_pairs:
+                problematic_views.update((idx, idx + 1))
+    breakdown["shift_rate_pairs"] = rate_exceed_pairs
 
-    # Criterion 4: Statistical outliers (optional)
-    statistical_outlier_indices = []  # Initialize for diagnostic printing
+    statistical_outlier_indices = np.array([], dtype=int)
     if use_statistical_analysis:
-        # Only apply if we have enough "good" views
-        # Create a list of indices that are not yet problematic
-        current_good_indices = list(set(range(len(min_overlaps))) - problematic_views)
+        current_good_indices = np.array(
+            sorted(set(range(len(min_overlaps))) - problematic_views)
+        )
         remaining_overlaps = min_overlaps[current_good_indices]
 
-        if len(remaining_overlaps) > 5:  # Need enough data for statistics
-            # Use robust statistics on the remaining views
+        if remaining_overlaps.size > 5:
             median_overlap = np.median(remaining_overlaps)
-            mad = np.median(
-                np.abs(remaining_overlaps - median_overlap)
-            )  # Median Absolute Deviation
-
-            # Only flag statistical outliers if they also violate FOV criterion
-            if (
-                mad > 0
-            ):  # Avoid division by zero if all remaining overlaps are identical
-                # Convert MAD to estimated standard deviation for Gaussian data
-                # The factor 1.4826 is specific to normally distributed data
-                # but is a common heuristic.
+            mad = np.median(np.abs(remaining_overlaps - median_overlap))
+            if mad > 0:
                 threshold = median_overlap - outlier_threshold * mad * 1.4826
+                mask = (min_overlaps < threshold) & (min_overlaps < min_fov_fraction)
+                statistical_outlier_indices = np.where(mask)[0]
+                problematic_views.update(statistical_outlier_indices.tolist())
+    breakdown["overlap_outliers"] = statistical_outlier_indices
 
-                # Find outliers among ALL views, not just current_good_indices,
-                # but only those that also violate the min_fov_fraction.
-                # This ensures we only flag views that are both statistically unusual
-                # AND have low overlap.
-                statistical_outlier_indices_bool = (min_overlaps < threshold) & (
-                    min_overlaps < min_fov_fraction
-                )
-                statistical_outlier_indices = np.where(
-                    statistical_outlier_indices_bool
-                )[0]
-                problematic_views.update(statistical_outlier_indices)
+    consistency_indices = []
+    if shifts_nm.shape[0] > 2:
+        for i in range(1, shifts_nm.shape[0] - 1):
+            if i in problematic_views:
+                continue
 
-    # Criterion 5: Consistency check
-    # If a view is surrounded by good views but has large shift, it's likely bad
-    # This requires at least 3 views to have a "middle" view, and 2 more for context, total 5.
-    # The original code had len(shifts_nm) > 4, which means at least 5 views.
-    if len(shifts_nm) > 4:  # Ensure there are enough views for prev, curr, next logic
-        for i in range(
-            1, len(shifts_nm) - 1
-        ):  # Iterate from the second to the second-to-last view
-            if i not in problematic_views:  # Only consider views not already flagged
-                # Check if this view's shift is very different from neighbors
-                # This check assumes that problematic_views does not change during this loop
-                # which is true for this implementation.
+            prev_shift = shifts_nm[i - 1]
+            curr_shift = shifts_nm[i]
+            next_shift = shifts_nm[i + 1]
 
-                # Check if neighbors are already problematic. If so, this view is harder to judge.
-                # For simplicity, the original logic didn't explicitly exclude if neighbors were bad.
-                # Let's stick to that unless it proves problematic.
-                prev_shift = shifts_nm[i - 1]
-                curr_shift = shifts_nm[i]
-                next_shift = shifts_nm[i + 1]
+            prev_angle = tilt_angles[i - 1]
+            curr_angle = tilt_angles[i]
+            next_angle = tilt_angles[i + 1]
+            span = next_angle - prev_angle
+            if span == 0:
+                continue
 
-                # Expected shift based on linear interpolation of immediate neighbors
-                expected_shift = (
-                    prev_shift + next_shift
-                ) / 2.0  # Use floating point division
-                deviation = np.linalg.norm(curr_shift - expected_shift)
+            weight = (curr_angle - prev_angle) / span
+            expected_shift = prev_shift + weight * (next_shift - prev_shift)
+            deviation = np.linalg.norm(curr_shift - expected_shift)
 
-                # If deviation is large AND overlap is below normal threshold (min_fov_fraction)
-                # max_shift_rate here is used as a proxy for large deviation.
-                # This might need tuning or a separate parameter.
-                if deviation > max_shift_rate and min_overlaps[i] < min_fov_fraction:
-                    problematic_views.add(i)
+            left_span = abs(curr_angle - prev_angle)
+            right_span = abs(next_angle - curr_angle)
+            local_span = max(min(left_span, right_span), 1e-6)
+            allowed_deviation = (
+                max_shift_rate * local_span
+                if max_shift_rate is not None
+                else max_shift_nm
+            )
 
-    # Print diagnostic information
-    # Use Path(coarse_align_prexg).name for cleaner output, as in the example
-    logger.info(f"\nShift analysis for {Path(coarse_align_prexg).name}:")
-    logger.info(f"  Total views: {len(shifts_nm)}")
+            if deviation > allowed_deviation and min_overlaps[i] < min_fov_fraction:
+                problematic_views.add(i)
+                consistency_indices.append(i)
+    breakdown["consistency"] = np.array(consistency_indices, dtype=int)
+
+    sorted_problematic = sorted(problematic_views)
+
+    logger.info(f"Shift analysis for {coarse_align_prexg.name}:")
+    logger.info(f"  Total views: {shifts_nm.shape[0]}")
     logger.info(f"  Maximum shift threshold: {max_shift_nm:.1f} nm")
-    logger.info(f"  Problematic views found: {len(problematic_views)}")
-    if len(problematic_views) > 0:
-        logger.info(f"  Indices: {sorted(list(problematic_views))}")
-        # For breakdown, we need to re-evaluate conditions if we want exact counts per criterion
-        # as a view could be caught by multiple. The current *_indices lists are fine for this.
-        logger.info(f"  Criteria breakdown:")
-        # abs_bad_indices was defined earlier
-        if len(abs_bad_indices) > 0:
+    if shifts_nm.shape[0] > 1 and max_shift_rate is not None:
+        logger.info(f"  Shift-rate threshold: {max_shift_rate:.1f} nm/deg")
+        finite_rates = shift_rates[np.isfinite(shift_rates)]
+        if finite_rates.size:
             logger.info(
-                f"    - Absolute minimum overlap violations ({min_acceptable_overlap*100}%): {len(abs_bad_indices)} views"
+                f"  Observed shift rates (nm/deg): min {np.min(finite_rates):.1f}, "
+                f"median {np.median(finite_rates):.1f}, max {np.max(finite_rates):.1f}"
             )
-        if len(max_shift_indices) > 0:
+    logger.info(f"  Problematic views found: {len(sorted_problematic)}")
+    if sorted_problematic:
+        logger.info(f"  Indices: {sorted_problematic}")
+        logger.info("  Criteria breakdown:")
+        if breakdown["min_overlap"].size:
             logger.info(
-                f"    - Maximum shift exceeded ({max_shift_nm:.1f} nm): {len(max_shift_indices)} views"
+                f"    - Absolute minimum overlap violations "
+                f"({min_acceptable_overlap*100:.0f}%): {breakdown['min_overlap'].size}"
             )
-            for (
-                idx
-            ) in max_shift_indices:  # Iterate through indices caught by this criterion
-                if (
-                    idx in problematic_views
-                ):  # Check if it's still considered problematic overall
-                    logger.info(
-                        f"      View {idx}: Shift {shift_magnitudes[idx]:.1f} nm"
-                    )
-
-        # large_jump_indices was defined earlier for Criterion 3
-        # The original code checked len(shifts_nm) > 2 before printing this part.
-        if len(shifts_nm) > 2 and len(large_jump_indices) > 0:
-            # This counts transitions (pairs of views), not individual views.
+        if breakdown["max_shift"].size:
             logger.info(
-                f"    - Large shift jumps detected: {len(large_jump_indices)} transitions"
+                f"    - Maximum shift exceeded ({max_shift_nm:.1f} nm): "
+                f"{breakdown['max_shift'].size}"
             )
-            # The original code did not print details for each jump, so we won't either.
-
-        # statistical_outlier_indices was initialized for Criterion 4
-        if use_statistical_analysis and len(statistical_outlier_indices) > 0:
+        if breakdown["shift_rate_pairs"].size:
             logger.info(
-                f"    - Statistical outliers: {len(statistical_outlier_indices)} views"
+                f"    - Shift-rate violations: {breakdown['shift_rate_pairs'].size} transitions"
+            )
+        if use_statistical_analysis and breakdown["overlap_outliers"].size:
+            logger.info(
+                f"    - Statistical overlap outliers: {breakdown['overlap_outliers'].size}"
+            )
+        if breakdown["consistency"].size:
+            logger.info(
+                f"    - Local consistency deviations: {breakdown['consistency'].size}"
             )
 
-    return sorted(list(problematic_views))
+    return sorted_problematic
 
 
 def remove_bad_tilts(ts: io.TiltSeries, im_data, pixel_nm, bad_idx):
@@ -301,14 +299,55 @@ def get_alignment_error(tilt_dir_name, logger):
         return None, None, None
 
 
+def get_alignment_track_stats(tilt_dir_name):
+    """
+    Parse taCoordinates.log to retrieve the number of tracked contours and total points.
+
+    Returns:
+        tuple[int | None, int | None]: (unique contour count, total point count). Returns
+        (None, None) if the log is missing or unreadable.
+    """
+    ta_log = Path(tilt_dir_name) / "taCoordinates.log"
+    if not ta_log.exists():
+        return None, None
+
+    try:
+        data = np.loadtxt(ta_log, skiprows=2)
+    except Exception:
+        return None, None
+
+    if data.size == 0:
+        return 0, 0
+
+    if data.ndim == 1:
+        data = np.atleast_2d(data)
+
+    try:
+        unique_contours = np.unique(data[:, 0]).size
+    except Exception:
+        return None, data.shape[0]
+
+    return unique_contours, data.shape[0]
+
+
 def write_ta_coords_log(tilt_dir_name, logger):
     with open(f"{str(tilt_dir_name)}/taCoordinates.log", "w") as ali_log:
         sbp_cmd = ["alignlog", "-c", f"{str(tilt_dir_name)}/align_patch.log"]
         write_taCoord_log = subprocess.run(
             sbp_cmd, stdout=ali_log, stderr=subprocess.PIPE, text=True
         )
-        logger.info(write_taCoord_log.stdout)
-        logger.error(write_taCoord_log.stderr)
+        if write_taCoord_log.returncode != 0:
+            if write_taCoord_log.stderr:
+                logger.error(
+                    f"alignlog failed (exit {write_taCoord_log.returncode}): "
+                    f"{write_taCoord_log.stderr.strip()}"
+                )
+            else:
+                logger.error(
+                    f"alignlog failed with exit code {write_taCoord_log.returncode}."
+                )
+        elif write_taCoord_log.stderr:
+            logger.warning(write_taCoord_log.stderr.strip())
 
 
 def improve_bad_alignments(tilt_dir_name, tilt_name, logger):
