@@ -87,10 +87,29 @@ def detect_large_shifts_afterxcorr(
     min_overlaps = np.minimum(x_overlaps, y_overlaps)
 
     tilt_angles = np.asarray(tilt_angles, dtype=float)
-    if tilt_angles.shape[0] != shifts_nm.shape[0]:
-        raise ValueError(
-            "Number of tilt angles does not match number of views in the prexg file."
+    n_views = shifts_nm.shape[0]
+    n_angles = tilt_angles.shape[0]
+    if n_angles != n_views:
+        if n_angles == 0:
+            raise ValueError(
+                "No tilt angles provided; cannot evaluate shift statistics."
+            )
+        logger.warning(
+            "Tilt angle count (%s) does not match the number of transforms in %s (%s). "
+            "Reconciling by resampling angles to match the available views.",
+            n_angles,
+            coarse_align_prexg.name,
+            n_views,
         )
+        if n_angles == 1:
+            tilt_angles = np.full(n_views, tilt_angles[0], dtype=float)
+        else:
+            resample_positions = np.linspace(0, n_angles - 1, num=n_views)
+            tilt_angles = np.interp(
+                resample_positions,
+                np.arange(n_angles, dtype=float),
+                tilt_angles,
+            )
 
     problematic_views = set()
     breakdown = {}
