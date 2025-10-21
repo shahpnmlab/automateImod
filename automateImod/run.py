@@ -157,9 +157,6 @@ def task_preprocessing(setup_result):
 def task_coarse_alignment(
     preprocessing_result,
     min_fov,
-    max_shift_nm,
-    max_shift_rate,
-    use_statistical_analysis,
 ):
     """Task for coarse alignment and large shift detection."""
     if preprocessing_result is None:
@@ -189,14 +186,9 @@ def task_coarse_alignment(
 
     large_shift_indices = utils.detect_large_shifts_afterxcorr(
         coarse_align_prexg=f"{ts.tilt_dir_name}/{ts.basename}.prexg",
-        pixel_size_nm=ts.pixel_size / 10,
         image_size=(ts.dimX, ts.dimY),
         logger=logger,
-        tilt_angles=ts.tilt_angles,
         min_fov_fraction=min_fov,
-        max_shift_nm=max_shift_nm,
-        max_shift_rate=max_shift_rate,
-        use_statistical_analysis=use_statistical_analysis,
     )
 
     if len(large_shift_indices) > 0:
@@ -554,15 +546,6 @@ def align_tilts(
     ),
     min_fov: float = typer.Option(0.7, help="Minimum required field of view."),
     max_attempts: int = typer.Option(3, help="Max attempts for alignment improvement."),
-    max_shift_nm: float = typer.Option(
-        None, help="Maximum acceptable absolute shift in nm."
-    ),
-    max_shift_rate: float = typer.Option(
-        50.0, help="Maximum acceptable shift rate in nm/degree."
-    ),
-    use_statistical_analysis: bool = typer.Option(
-        True, help="Use statistical outlier detection for shifts."
-    ),
     is_warp_proj: bool = typer.Option(
         False, "--is-warp-proj/--no-warp-proj", help="Indicates if it is a Warp project."
     ),
@@ -626,9 +609,6 @@ def align_tilts(
             task_coarse_alignment,
             preprocessing_future,
             min_fov,
-            max_shift_nm,
-            max_shift_rate,
-            use_statistical_analysis,
             pure=False,
         )
         futures_map[coarse_align_future.key] = f"{basename}: Coarse Alignment"
