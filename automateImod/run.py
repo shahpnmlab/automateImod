@@ -58,13 +58,17 @@ def task_setup(
                 if movie_path_element is not None:
                     movie_paths = movie_path_element.text.strip().split("\n")
                     ts.tilt_frames = [Path(movie).name for movie in movie_paths]
-                    logger.info(f"Loaded {len(ts.tilt_frames)} tilt frames from XML file.")
+                    logger.info(
+                        f"Loaded {len(ts.tilt_frames)} tilt frames from XML file."
+                    )
                 else:
                     logger.warning("MoviePath element not found in XML file.")
             except Exception as e:
                 logger.error(f"Error reading frame names from XML file: {e}")
         else:
-            logger.warning(f"XML file {xml_file} does not exist, cannot load frame names.")
+            logger.warning(
+                f"XML file {xml_file} does not exist, cannot load frame names."
+            )
 
     # Final check: if tilt_frames is still empty, try reading from tomostar directly
     if not ts.tilt_frames and ts_tomostar_path:
@@ -76,7 +80,9 @@ def task_setup(
                     Path(movie_name).name
                     for movie_name in tomostar_data["wrpMovieName"]
                 ]
-                logger.info(f"Loaded {len(ts.tilt_frames)} tilt frames from tomostar file (fallback).")
+                logger.info(
+                    f"Loaded {len(ts.tilt_frames)} tilt frames from tomostar file (fallback)."
+                )
             except Exception as e:
                 logger.error(f"Error reading frame names from tomostar file: {e}")
 
@@ -128,8 +134,7 @@ def task_preprocessing(setup_result):
         # Keep only the original indices that weren't marked as dark frames
         dark_frame_indices_set = set(dark_frame_indices)
         current_to_original_idx = [
-            idx for idx in current_to_original_idx
-            if idx not in dark_frame_indices_set
+            idx for idx in current_to_original_idx if idx not in dark_frame_indices_set
         ]
         logger.info(
             f"After removing {len(dark_frame_indices)} dark frames, "
@@ -151,7 +156,14 @@ def task_preprocessing(setup_result):
                     frame_name = original_tilt_frames[idx]
                     fout.write(f"{frame_name},{original_tilt_angles[idx]},{idx}\n")
 
-    return ts, im_data, original_tilt_angles, original_tilt_frames, current_to_original_idx, logger
+    return (
+        ts,
+        im_data,
+        original_tilt_angles,
+        original_tilt_frames,
+        current_to_original_idx,
+        logger,
+    )
 
 
 def task_coarse_alignment(
@@ -161,9 +173,14 @@ def task_coarse_alignment(
     """Task for coarse alignment and large shift detection."""
     if preprocessing_result is None:
         return None
-    ts, im_data, original_tilt_angles, original_tilt_frames, current_to_original_idx, logger = (
-        preprocessing_result
-    )
+    (
+        ts,
+        im_data,
+        original_tilt_angles,
+        original_tilt_frames,
+        current_to_original_idx,
+        logger,
+    ) = preprocessing_result
     logger.info(f"Aligning {ts.basename}: Running coarse alignment")
     coms.write_xcorr_com(
         tilt_dir_name=ts.tilt_dir_name,
@@ -203,7 +220,9 @@ def task_coarse_alignment(
             if idx < len(current_to_original_idx):
                 original_idx = current_to_original_idx[idx]
                 original_large_shift_indices.append(original_idx)
-                logger.info(f"Current index {idx} maps to original index {original_idx}")
+                logger.info(
+                    f"Current index {idx} maps to original index {original_idx}"
+                )
             else:
                 logger.error(
                     f"Current index {idx} is out of range (current stack has {len(current_to_original_idx)} frames)"
@@ -219,17 +238,25 @@ def task_coarse_alignment(
         logger.info(f"Redoing coarse alignment with decimated {ts.basename} stack")
 
         coms.execute_com_file(
-            f"{str(ts.tilt_dir_name)}/xcorr_coarse.com", capture_output=False, logger=logger
+            f"{str(ts.tilt_dir_name)}/xcorr_coarse.com",
+            capture_output=False,
+            logger=logger,
         )
         coms.execute_com_file(
-            f"{str(ts.tilt_dir_name)}/newst_coarse.com", capture_output=False, logger=logger
+            f"{str(ts.tilt_dir_name)}/newst_coarse.com",
+            capture_output=False,
+            logger=logger,
         )
         marker_file = ts.tilt_dir_name / "autoImod.marker"
         with open(marker_file, "a") as fout:
             for original_idx in original_large_shift_indices:
-                if original_idx < len(original_tilt_angles) and original_idx < len(original_tilt_frames):
+                if original_idx < len(original_tilt_angles) and original_idx < len(
+                    original_tilt_frames
+                ):
                     frame_name = original_tilt_frames[original_idx]
-                    fout.write(f"{frame_name},{original_tilt_angles[original_idx]},{original_idx}\n")
+                    fout.write(
+                        f"{frame_name},{original_tilt_angles[original_idx]},{original_idx}\n"
+                    )
                 else:
                     logger.error(
                         f"Original index {original_idx} is out of range for original tilt_angles or tilt_frames."
@@ -294,10 +321,14 @@ def task_fine_alignment(coarse_align_result, max_attempts):
                 tilt_dir_name=ts.tilt_dir_name, tilt_name=ts.basename, logger=logger
             )
             coms.execute_com_file(
-                f"{str(ts.tilt_dir_name)}/align_patch.com", capture_output=False, logger=logger
+                f"{str(ts.tilt_dir_name)}/align_patch.com",
+                capture_output=False,
+                logger=logger,
             )
             utils.write_ta_coords_log(tilt_dir_name=ts.tilt_dir_name, logger=logger)
-            current_contours, current_points = utils.get_alignment_track_stats(ts.tilt_dir_name)
+            current_contours, current_points = utils.get_alignment_track_stats(
+                ts.tilt_dir_name
+            )
             if (
                 min_contour_threshold is not None
                 and current_contours is not None
@@ -353,7 +384,9 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
         return
     ts, logger = final_stack_result
     if not (ts_xml_path or ts_tomostar_path):
-        logger.warning("Skipping Warp XML/tomostar update because neither path is provided.")
+        logger.warning(
+            "Skipping Warp XML/tomostar update because neither path is provided."
+        )
         return
 
     logger.info("Updating the provided XML metadata file and/or tomostar file")
@@ -421,7 +454,9 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
                         f"but got {actual_final_count}. Some frames in marker file may not exist in XML."
                     )
 
-                logger.info(f"Keeping {actual_final_count} views, removed {removed_count} views")
+                logger.info(
+                    f"Keeping {actual_final_count} views, removed {removed_count} views"
+                )
 
                 # Update all elements using the good indices
                 elements_to_update = [
@@ -444,11 +479,17 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
                                 f"This may cause misalignment."
                             )
                         # Keep only the good indices
-                        updated_lines = [lines[i] for i in good_indices if i < len(lines)]
+                        updated_lines = [
+                            lines[i] for i in good_indices if i < len(lines)
+                        ]
                         element.text = "\n" + "\n".join(updated_lines) + "\n"
-                        logger.info(f"Updated {element_name}: {len(lines)} -> {len(updated_lines)} entries")
+                        logger.info(
+                            f"Updated {element_name}: {len(lines)} -> {len(updated_lines)} entries"
+                        )
                     else:
-                        logger.warning(f"{element_name} element not found in the XML file.")
+                        logger.warning(
+                            f"{element_name} element not found in the XML file."
+                        )
 
                 tree.write(xml_file, encoding="utf-8", xml_declaration=True)
                 logger.info(f"Updated XML file: {xml_file}")
@@ -464,14 +505,21 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
             logger.info(f"Original tomostar has {original_tomostar_count} entries")
 
             good_mask = (
-                ~tomostar_data["wrpMovieName"].apply(lambda x: Path(x).name).isin(bad_frames)
+                ~tomostar_data["wrpMovieName"]
+                .apply(lambda x: Path(x).name)
+                .isin(bad_frames)
             )
             updated_tomostar_data = tomostar_data[good_mask]
             final_tomostar_count = len(updated_tomostar_data)
 
-            logger.info(f"Tomostar: {original_tomostar_count} -> {final_tomostar_count} entries")
+            logger.info(
+                f"Tomostar: {original_tomostar_count} -> {final_tomostar_count} entries"
+            )
 
-            if actual_final_count is not None and final_tomostar_count != actual_final_count:
+            if (
+                actual_final_count is not None
+                and final_tomostar_count != actual_final_count
+            ):
                 logger.warning(
                     f"Mismatch between XML ({actual_final_count}) and tomostar ({final_tomostar_count}) "
                     f"final counts. Check for inconsistencies."
@@ -530,14 +578,19 @@ def align_tilts(
         "--ts-basenames",
         help="A comma-separated string of specific tilt series basenames to process.",
     ),
-    n_tasks: int = typer.Option(
-        1, "--n-tasks", help="Number of parallel tasks to run."
-    ),
     ts_mdoc_path: Path = typer.Option(
         None, help="Directory containing the tilt series mdoc file."
     ),
     ts_tomostar_path: Path = typer.Option(
         None, help="Directory containing the tomostar file."
+    ),
+    ts_xml_path: Optional[Path] = typer.Option(
+        None, help="Path to Warp processing results for XML update."
+    ),
+    is_warp_proj: bool = typer.Option(
+        True,
+        "--is-warp-proj/--no-warp-proj",
+        help="Indicates if it is a Warp project.",
     ),
     ts_tilt_axis: str = typer.Option(..., help="Tilt axis value."),
     ts_bin: str = typer.Option("1", help="Bin value for tilt series."),
@@ -546,14 +599,11 @@ def align_tilts(
     ),
     min_fov: float = typer.Option(0.7, help="Minimum required field of view."),
     max_attempts: int = typer.Option(3, help="Max attempts for alignment improvement."),
-    is_warp_proj: bool = typer.Option(
-        False, "--is-warp-proj/--no-warp-proj", help="Indicates if it is a Warp project."
+    n_tasks: int = typer.Option(
+        1, "--n-tasks", help="Number of parallel tasks to run."
     ),
     reconstruct: bool = typer.Option(
         False, "--reconstruct", help="Reconstruct tomogram after alignment."
-    ),
-    ts_xml_path: Optional[Path] = typer.Option(
-        None, help="Path to Warp processing results for XML update."
     ),
     tomo_bin: Optional[str] = typer.Option(
         None, help="Binned tomogram size for reconstruction."
@@ -571,6 +621,15 @@ def align_tilts(
         basenames_to_process = [name.strip() for name in ts_basenames.split(",")]
     else:
         basenames_to_process = [d.name for d in ts_data_folder.iterdir() if d.is_dir()]
+
+    skip_basenames = utils.build_autoimod_skip_list(ts_data_folder)
+    if skip_basenames:
+        print(
+            f"Found {len(skip_basenames)} tilt series with autoImod.marker; skipping them."
+        )
+    basenames_to_process = [
+        basename for basename in basenames_to_process if basename not in skip_basenames
+    ]
 
     print(f"Found {len(basenames_to_process)} tilt series to process.")
 
