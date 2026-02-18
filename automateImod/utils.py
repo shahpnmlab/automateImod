@@ -237,18 +237,26 @@ def improve_bad_alignments(tilt_dir_name, tilt_name, logger):
         logger.error(f"model2point stderr: {result.stderr}")
 
     fid_text = np.loadtxt(mod2txt)
-    new_good_contours = np.empty((0, 4))
+    new_good_contours_list = []
 
     for i in range(goodpoints.shape[0]):
         a = fid_text[fid_text[:, 0] == goodpoints[i]]
-        new_good_contours = np.append(new_good_contours, a, axis=0)
+        if a.size:
+            new_good_contours_list.append(a)
 
-    number_of_new_contours = np.unique(new_good_contours[:, 0]).shape[0]
-    number_of_new_contours = np.arange(number_of_new_contours) + 1
+    if not new_good_contours_list:
+        logger.warning("No good contours found; skipping seed model generation.")
+        return
 
-    repeats = np.unique(new_good_contours[:, -1]).shape[0]
-    new_contour_id = np.repeat(number_of_new_contours, repeats)
-    new_contour_id = new_contour_id.reshape(new_contour_id.shape[0], 1)
+    new_good_contours = np.vstack(new_good_contours_list)
+
+    # Remap contour ids to a dense 1..N range per row.
+    old_ids = new_good_contours[:, 0].astype(int)
+    unique_old_ids = np.unique(old_ids)
+    id_map = {old_id: i + 1 for i, old_id in enumerate(unique_old_ids)}
+    new_contour_id = np.array([id_map[old_id] for old_id in old_ids], dtype=int).reshape(
+        -1, 1
+    )
     new_good_contours = np.hstack((new_contour_id, new_good_contours[:, 1:]))
 
     np.savetxt(
