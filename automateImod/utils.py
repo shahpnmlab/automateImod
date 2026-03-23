@@ -9,6 +9,31 @@ import automateImod.calc as calc
 import automateImod.pio as io
 
 
+def build_autoimod_skip_list(ts_data_folder: Path, marker_name: str = "autoImod.marker"):
+    """
+    Recursively scan the tilt-series data folder for marker files and return
+    a sorted list of top-level tilt-series basenames to skip.
+    """
+    ts_data_folder = Path(ts_data_folder)
+    if not ts_data_folder.exists():
+        return []
+
+    skip_basenames = set()
+    try:
+        for marker_path in ts_data_folder.rglob(marker_name):
+            try:
+                rel = marker_path.relative_to(ts_data_folder)
+            except ValueError:
+                continue
+            # Expect marker inside a tilt-series directory: <basename>/autoImod.marker
+            if len(rel.parts) >= 2:
+                skip_basenames.add(rel.parts[0])
+    except Exception:
+        return []
+
+    return sorted(skip_basenames)
+
+
 def setup_logging(log_file_path: Path):
     """Configure logging to write to a file."""
     # Get a logger specific to the tilt series (using the file path as a key)

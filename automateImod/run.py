@@ -621,14 +621,19 @@ def align_tilts(
         "--ts-basenames",
         help="A comma-separated string of specific tilt series basenames to process.",
     ),
-    n_tasks: int = typer.Option(
-        1, "--n-tasks", help="Number of parallel tasks to run."
-    ),
     ts_mdoc_path: Path = typer.Option(
         None, help="Directory containing the tilt series mdoc file."
     ),
     ts_tomostar_path: Path = typer.Option(
         None, help="Directory containing the tomostar file."
+    ),
+    ts_xml_path: Optional[Path] = typer.Option(
+        None, help="Path to Warp processing results for XML update."
+    ),
+    is_warp_proj: bool = typer.Option(
+        True,
+        "--is-warp-proj/--no-warp-proj",
+        help="Indicates if it is a Warp project.",
     ),
     ts_tilt_axis: str = typer.Option(..., help="Tilt axis value."),
     ts_bin: str = typer.Option("1", help="Bin value for tilt series."),
@@ -644,9 +649,6 @@ def align_tilts(
     ),
     reconstruct: bool = typer.Option(
         False, "--reconstruct", help="Reconstruct tomogram after alignment."
-    ),
-    ts_xml_path: Optional[Path] = typer.Option(
-        None, help="Path to Warp processing results for XML update."
     ),
     tomo_bin: Optional[str] = typer.Option(
         None, help="Binned tomogram size for reconstruction."
@@ -674,6 +676,15 @@ def align_tilts(
         basenames_to_process = [name.strip() for name in ts_basenames.split(",")]
     else:
         basenames_to_process = [d.name for d in ts_data_folder.iterdir() if d.is_dir()]
+
+    skip_basenames = utils.build_autoimod_skip_list(ts_data_folder)
+    if skip_basenames:
+        print(
+            f"Found {len(skip_basenames)} tilt series with autoImod.marker; skipping them."
+        )
+    basenames_to_process = [
+        basename for basename in basenames_to_process if basename not in skip_basenames
+    ]
 
     print(f"Found {len(basenames_to_process)} tilt series to process.")
 
