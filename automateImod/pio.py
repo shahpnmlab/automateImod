@@ -33,6 +33,7 @@ class TiltSeries(BaseModel):
     tilt_dir_name: Optional[Path] = None
     axis_angles: List[float] = []
     doses: List[float] = []
+    intensities: List[float] = []
     use_tilt: List[bool] = []
     axis_offset_x: List[float] = []
     axis_offset_y: List[float] = []
@@ -64,8 +65,8 @@ class TiltSeries(BaseModel):
             self.rawtlt = f"{self.basename}.rawtlt"
             self.mdoc = f"{self.basename}.mdoc"
             self.xml = f"{self.basename}.xml"
-            self.get_extension()
             self.tomostar = f"{self.basename}.tomostar"
+            self.get_extension()
             self.tilt_frames = []
             self.tilt_angles = []
 
@@ -153,6 +154,7 @@ class TiltSeries(BaseModel):
                 self.tilt_angles = np.array(tomostar_data["wrpAngleTilt"])
                 self.axis_angles = tomostar_data["wrpAxisAngle"]
                 self.doses = tomostar_data["wrpDose"]
+                self.intensities = tomostar_data["wrpAverageIntensity"]
 
                 self.logger.info(
                     f"Processed {len(self.tilt_frames)} tilt frames from tomostar file."
@@ -162,15 +164,21 @@ class TiltSeries(BaseModel):
             except Exception as e:
                 self.logger.error(f"Error reading tomostar file: {e}")
         else:
-            self.logger.warning(f"Could not find {self.tomostar} in {self.path_to_tomostar}.")
+            self.logger.warning(
+                f"Could not find {self.tomostar} in {self.path_to_tomostar}."
+            )
 
     def read_rawtlt_file(self):
         rawtlt_path = self.get_rawtlt_path()
         if rawtlt_path and rawtlt_path.exists():
             self.tilt_angles = np.loadtxt(rawtlt_path)
-            self.logger.info(f"Loaded {len(self.tilt_angles)} tilt angles from rawtlt file.")
+            self.logger.info(
+                f"Loaded {len(self.tilt_angles)} tilt angles from rawtlt file."
+            )
         else:
-            self.logger.warning(f"Could not find {self.rawtlt} in {self.tilt_dir_name}.")
+            self.logger.warning(
+                f"Could not find {self.rawtlt} in {self.tilt_dir_name}."
+            )
 
     def read_mdoc_file(self):
         mdoc_path = self.get_mdoc_path()
@@ -180,9 +188,13 @@ class TiltSeries(BaseModel):
                 self.tilt_frames = (
                     md["SubFramePath"].apply(lambda x: Path(x).name).tolist()
                 )
-            self.logger.info(f"Processed {len(self.tilt_frames)} tilt frames from mdoc file.")
+            self.logger.info(
+                f"Processed {len(self.tilt_frames)} tilt frames from mdoc file."
+            )
         else:
-            self.logger.warning(f"Could not find {self.mdoc} in {self.path_to_mdoc_data}.")
+            self.logger.warning(
+                f"Could not find {self.mdoc} in {self.path_to_mdoc_data}."
+            )
 
     def get_extension(self):
         if self.tilt_dir_name:  # Ensure tilt_dir_name is not None
@@ -281,7 +293,9 @@ class TiltSeries(BaseModel):
             except Exception as e:
                 self.logger.error(f"Error reading XML file: {e}")
         else:
-            self.logger.warning(f"Could not find {self.xml} in {self.path_to_xml_data}.")
+            self.logger.warning(
+                f"Could not find {self.xml} in {self.path_to_xml_data}."
+            )
 
 
 class Tomogram(BaseModel):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "automateImod"
-version = "0.6.3"
+version = "0.6.4"
 authors = [
     {name = "Pranav NM Shah"},
 ]
@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 automateImod = "automateImod.run:automateimod"
+automateimod = "automateImod.run:automateimod"
 
 [tool.setuptools.packages.find]
 include = ["automateImod*"]
