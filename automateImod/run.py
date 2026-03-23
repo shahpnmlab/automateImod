@@ -6,6 +6,7 @@ import shutil
 from typing import Optional
 from tqdm import tqdm
 import os
+import importlib.metadata
 
 import automateImod.calc as calc
 import automateImod.coms as coms
@@ -13,13 +14,32 @@ import automateImod.utils as utils
 import automateImod.pio as pio
 import xml.etree.ElementTree as ET
 import pandas as pd
-import numpy as np
 from pathlib import Path
 from dask.distributed import Client, LocalCluster, as_completed
 
 automateimod = typer.Typer(
     no_args_is_help=True, pretty_exceptions_show_locals=False, add_completion=False
 )
+
+
+def _version_callback(value: bool):
+    if value:
+        version = importlib.metadata.version("automateImod")
+        typer.echo(f"automateImod {version}")
+        raise typer.Exit()
+
+
+@automateimod.callback()
+def _main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    ),
+):
+    pass
 
 
 def task_setup(
@@ -86,20 +106,28 @@ def task_setup(
             except Exception as e:
                 logger.error(f"Error reading frame names from tomostar file: {e}")
 
-    # Validate that we have frame names
     if not ts.tilt_frames:
         logger.error(
             f"Could not load frame names for {basename}. "
             f"Please provide either --ts-tomostar-path, --ts-mdoc-path, or --ts-xml-path."
         )
 
+    # Validate that all metadata sources agree on frame count before any processing
+    utils.validate_tilt_series_counts(ts, ts_xml_path, logger)
+
     return ts, logger
 
 
-def task_preprocessing(setup_result):
-    """Task for preprocessing: dark tilt detection and removal."""
+def task_preprocessing(setup_result, ts_intensity_threshold):
+    """Task for preprocessing: bad tilt detection and removal.
+
+    Detection strategy (in priority order):
+      1. If tomostar intensity/dose data are available AND ts_intensity_threshold
+         is set, use filter_by_intensities.
+      2. Otherwise fall back to pixel-level dark-tilt detection.
+    All bad indices are collected and remove_bad_tilts is called exactly once.
+    """
     ts, logger = setup_result
-    logger.info(f"Aligning {ts.basename}: Detecting dark frames")
     ts_path = ts.get_mrc_path()
     if not ts_path.is_file():
         logger.error(f"No valid tilt series found at {ts_path}. Aborting.")
@@ -108,53 +136,71 @@ def task_preprocessing(setup_result):
     im_data = mrcfile.read(ts_path)
     original_tilt_frames = ts.tilt_frames.copy()
     original_tilt_angles = ts.tilt_angles.copy()
-
-    # Create mapping from current index to original index
-    # Initially, index i maps to original index i
     current_to_original_idx = list(range(len(original_tilt_frames)))
 
-    dark_frame_indices = utils.detect_dark_tilts(
-        ts_data=im_data, ts_tilt_angles=ts.tilt_angles, logger=logger
-    )
+    # --- Choose detection strategy ---
+    has_tomostar_data = len(ts.doses) > 0 and len(ts.intensities) > 0
 
-    if len(dark_frame_indices) > 0:
-        logger.info(f"Detected {len(dark_frame_indices)} dark tilts in {ts.basename}")
+    if ts_intensity_threshold is not None and has_tomostar_data:
         logger.info(
-            f"Aligning {ts.basename}: Removing dark frames and rebuilding stack"
+            f"Aligning {ts.basename}: Detecting bad tilts via tomostar intensity "
+            f"(threshold={ts_intensity_threshold})"
+        )
+        bad_frame_indices = utils.filter_by_intensities(
+            ts=ts, threshold=ts_intensity_threshold, logger=logger
+        )
+    else:
+        if ts_intensity_threshold is not None and not has_tomostar_data:
+            logger.warning(
+                "Intensity threshold was set but tomostar dose/intensity data are "
+                "unavailable. Falling back to pixel-level dark tilt detection."
+            )
+        else:
+            logger.info(f"Aligning {ts.basename}: Detecting dark frames")
+        bad_frame_indices = utils.detect_dark_tilts(
+            ts_data=im_data, ts_tilt_angles=ts.tilt_angles, logger=logger
+        )
+
+    # --- Remove bad frames (single call) ---
+    if len(bad_frame_indices) > 0:
+        logger.info(
+            f"Detected {len(bad_frame_indices)} bad tilts in {ts.basename}; "
+            f"removing and rebuilding stack."
         )
         utils.remove_bad_tilts(
             ts=ts,
             im_data=im_data,
             pixel_nm=ts.pixel_size / 10,
-            bad_idx=dark_frame_indices,
+            bad_idx=bad_frame_indices,
         )
-        ts.removed_indices.extend(dark_frame_indices)
+        ts.removed_indices.extend(bad_frame_indices)
 
-        # Update the mapping: remove the dark frame indices
-        # Keep only the original indices that weren't marked as dark frames
-        dark_frame_indices_set = set(dark_frame_indices)
+        bad_frame_indices_set = set(bad_frame_indices)
         current_to_original_idx = [
-            idx for idx in current_to_original_idx if idx not in dark_frame_indices_set
+            idx for idx in current_to_original_idx if idx not in bad_frame_indices_set
         ]
         logger.info(
-            f"After removing {len(dark_frame_indices)} dark frames, "
-            f"current stack has {len(current_to_original_idx)} frames"
+            f"After removal, current stack has {len(current_to_original_idx)} frames."
         )
 
         del im_data
         im_data, _, _, _ = pio.read_mrc(ts_path)
     else:
-        logger.info("No dark frames found.")
+        logger.info("No bad frames detected.")
 
+    # --- Write marker file ---
     marker_file = ts.tilt_dir_name / "autoImod.marker"
     if not marker_file.exists():
         marker_file.touch()
         with open(marker_file, "w") as fout:
             fout.write("frame_basename,stage_angle,pos_in_tilt_stack\n")
-            for idx in dark_frame_indices:
+            for idx in bad_frame_indices:
                 if idx < len(original_tilt_frames) and idx < len(original_tilt_angles):
-                    frame_name = original_tilt_frames[idx]
-                    fout.write(f"{frame_name},{original_tilt_angles[idx]},{idx}\n")
+                    fout.write(
+                        f"{original_tilt_frames[idx]},"
+                        f"{original_tilt_angles[idx]},"
+                        f"{idx}\n"
+                    )
 
     return (
         ts,
@@ -214,7 +260,6 @@ def task_coarse_alignment(
         )
         logger.info(f"Aligning {ts.basename}: Removing bad tilts and rebuilding stack")
 
-        # Map current decimated indices to original indices
         original_large_shift_indices = []
         for idx in large_shift_indices:
             if idx < len(current_to_original_idx):
@@ -225,7 +270,8 @@ def task_coarse_alignment(
                 )
             else:
                 logger.error(
-                    f"Current index {idx} is out of range (current stack has {len(current_to_original_idx)} frames)"
+                    f"Current index {idx} is out of range (current stack has "
+                    f"{len(current_to_original_idx)} frames)"
                 )
 
         utils.remove_bad_tilts(
@@ -259,7 +305,8 @@ def task_coarse_alignment(
                     )
                 else:
                     logger.error(
-                        f"Original index {original_idx} is out of range for original tilt_angles or tilt_frames."
+                        f"Original index {original_idx} is out of range for "
+                        f"original tilt_angles or tilt_frames."
                     )
     return ts, logger
 
@@ -336,8 +383,8 @@ def task_fine_alignment(coarse_align_result, max_attempts):
             ):
                 logger.warning(
                     "Stopping alignment improvement early: tracked contours dropped from "
-                    f"{initial_contours} to {current_contours}, which is below the safeguard threshold "
-                    f"of {min_contour_threshold}."
+                    f"{initial_contours} to {current_contours}, which is below the "
+                    f"safeguard threshold of {min_contour_threshold}."
                 )
                 contours_floor_triggered = True
                 break
@@ -349,7 +396,8 @@ def task_fine_alignment(coarse_align_result, max_attempts):
             logger.warning("Max realignment attempts reached.")
         if contours_floor_triggered:
             logger.warning(
-                "Alignment improvement aborted because too few contours remain to provide reliable statistics."
+                "Alignment improvement aborted because too few contours remain "
+                "to provide reliable statistics."
             )
 
     logger.info(
@@ -395,20 +443,17 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
         logger.warning(f"{marker_file} does not exist.")
         return
 
-    # Read marker file and get bad frames
     md = pd.read_csv(marker_file, delimiter=",")
     bad_frames = set(md["frame_basename"].tolist())
 
-    # Skip if marker file only has header (no bad frames)
     if len(bad_frames) == 0:
         logger.info("No frames to remove, skipping XML/tomostar update.")
         return
 
     logger.info(f"Removing {len(bad_frames)} frames: {bad_frames}")
 
-    actual_final_count = None  # Track final count for validation
+    actual_final_count = None
 
-    # Update XML file if path provided
     if ts_xml_path:
         xml_file = ts_xml_path / f"{ts.basename}.xml"
         if not xml_file.exists():
@@ -425,7 +470,6 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
             tree = ET.parse(xml_file)
             root = tree.getroot()
 
-            # Get MoviePath element first - this is our reference
             movie_path_element = root.find("MoviePath")
             if movie_path_element is None:
                 logger.error("MoviePath element not found in XML file.")
@@ -434,7 +478,6 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
                 original_count = len(movie_paths)
                 logger.info(f"Original XML has {original_count} views")
 
-                # Build good indices - these are the views to keep
                 good_indices = []
                 removed_count = 0
                 for i, movie in enumerate(movie_paths):
@@ -451,14 +494,14 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
                 if actual_final_count != expected_final_count:
                     logger.warning(
                         f"Mismatch: expected {expected_final_count} views after removal, "
-                        f"but got {actual_final_count}. Some frames in marker file may not exist in XML."
+                        f"but got {actual_final_count}. Some frames in marker file may "
+                        f"not exist in XML."
                     )
 
                 logger.info(
                     f"Keeping {actual_final_count} views, removed {removed_count} views"
                 )
 
-                # Update all elements using the good indices
                 elements_to_update = [
                     "Angles",
                     "Dose",
@@ -475,16 +518,17 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
                         lines = element.text.strip().split("\n")
                         if len(lines) != original_count:
                             logger.warning(
-                                f"{element_name} has {len(lines)} entries but MoviePath has {original_count}. "
+                                f"{element_name} has {len(lines)} entries but "
+                                f"MoviePath has {original_count}. "
                                 f"This may cause misalignment."
                             )
-                        # Keep only the good indices
                         updated_lines = [
                             lines[i] for i in good_indices if i < len(lines)
                         ]
                         element.text = "\n" + "\n".join(updated_lines) + "\n"
                         logger.info(
-                            f"Updated {element_name}: {len(lines)} -> {len(updated_lines)} entries"
+                            f"Updated {element_name}: {len(lines)} -> "
+                            f"{len(updated_lines)} entries"
                         )
                     else:
                         logger.warning(
@@ -494,7 +538,6 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
                 tree.write(xml_file, encoding="utf-8", xml_declaration=True)
                 logger.info(f"Updated XML file: {xml_file}")
 
-    # Update tomostar file if path provided
     if ts_tomostar_path:
         tomostar_file = ts_tomostar_path / f"{ts.basename}.tomostar"
         if not tomostar_file.exists():
@@ -521,8 +564,8 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
                 and final_tomostar_count != actual_final_count
             ):
                 logger.warning(
-                    f"Mismatch between XML ({actual_final_count}) and tomostar ({final_tomostar_count}) "
-                    f"final counts. Check for inconsistencies."
+                    f"Mismatch between XML ({actual_final_count}) and tomostar "
+                    f"({final_tomostar_count}) final counts. Check for inconsistencies."
                 )
 
             starfile.write(updated_tomostar_data, tomostar_file, overwrite=True)
@@ -599,8 +642,10 @@ def align_tilts(
     ),
     min_fov: float = typer.Option(0.7, help="Minimum required field of view."),
     max_attempts: int = typer.Option(3, help="Max attempts for alignment improvement."),
-    n_tasks: int = typer.Option(
-        1, "--n-tasks", help="Number of parallel tasks to run."
+    is_warp_proj: bool = typer.Option(
+        False,
+        "--is-warp-proj/--no-warp-proj",
+        help="Indicates if it is a Warp project.",
     ),
     reconstruct: bool = typer.Option(
         False, "--reconstruct", help="Reconstruct tomogram after alignment."
@@ -612,6 +657,16 @@ def align_tilts(
         True,
         "--backup-xml/--no-backup-xml",
         help="Create a backup of the XML file before updating.",
+    ),
+    ts_intensity_threshold: Optional[float] = typer.Option(
+        0.75,
+        "--ts-intensity-threshold",
+        help=(
+            "Remove tilts whose normalised intensity (relative to the lowest-dose view) "
+            "drops below this value. Requires a tomostar file; if none is provided the "
+            "pipeline falls back to pixel-level dark-tilt detection. "
+            "Pass None to skip intensity filtering entirely."
+        ),
     ),
 ):
     """
@@ -644,7 +699,6 @@ def align_tilts(
     all_futures = []
 
     for basename in basenames_to_process:
-        # Chain tasks for each tilt series
         setup_future = client.submit(
             task_setup,
             basename,
@@ -660,7 +714,7 @@ def align_tilts(
         futures_map[setup_future.key] = f"{basename}: Setup"
 
         preprocessing_future = client.submit(
-            task_preprocessing, setup_future, pure=False
+            task_preprocessing, setup_future, ts_intensity_threshold, pure=False
         )
         futures_map[preprocessing_future.key] = f"{basename}: Preprocessing"
 

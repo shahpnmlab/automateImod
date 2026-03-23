@@ -74,6 +74,13 @@ automateimod align-tilts \
 ```
 
 # Changelog
+### v0.6.4
+- Entry-point can now be `automateImod` or `automateimod`.
+- Now dark frame detection and stack decimation is performed when tomostar file is included. This supercedes pixel level
+ calculations. Pass the value to `align-tilts` via `--ts-intensity-threshold`
+- Included a fix to assign new sequential IDs contour-by-contour instead of blindly repeating that count per contour in
+`improve_bad_alignments` function in `utils.py`.
+- include a `--version` CLI arg.
 
 ### v0.6.1
 - Updated entry-point to `automatedimod` instead of `automateImod`.

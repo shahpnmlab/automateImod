@@ -4,7 +4,7 @@ import mrcfile
 import numpy as np
 from pathlib import Path
 import logging
-
+import xml.etree.ElementTree as ET
 import automateImod.calc as calc
 import automateImod.pio as io
 
@@ -251,7 +251,7 @@ def improve_bad_alignments(tilt_dir_name, tilt_name, logger):
 
     contour_resid, median_residual = calc.median_residual(align_log_vals)
 
-    goodpoints = np.where(contour_resid[:, [1]] <= np.around(median_residual))
+    goodpoints = np.where(contour_resid[:, [1]] <= median_residual)
     goodpoints = goodpoints[0] + 1
 
     # Convert the fiducial model file to a text file and readit in
@@ -261,28 +261,29 @@ def improve_bad_alignments(tilt_dir_name, tilt_name, logger):
     if result.stderr:
         logger.error(f"model2point stderr: {result.stderr}")
 
+    #
     fid_text = np.loadtxt(mod2txt)
-    new_good_contours_list = []
 
-    for i in range(goodpoints.shape[0]):
-        a = fid_text[fid_text[:, 0] == goodpoints[i]]
-        if a.size:
-            new_good_contours_list.append(a)
+    # Collect rows for each good contour and assign a new sequential ID.
+    # Doing this per-contour handles variable point counts correctly — the old
+    # approach assumed every contour had the same number of points, which caused
+    # np.repeat to produce an array of the wrong length and hstack to fail.
+    chunks = []
+    for new_id, old_id in enumerate(goodpoints, start=1):
+        rows = fid_text[fid_text[:, 0] == old_id].copy()
+        if rows.size == 0:
+            logger.warning(f"Contour {old_id} not found in {mod2txt}; skipping.")
+            continue
+        rows[:, 0] = new_id
+        chunks.append(rows)
 
-    if not new_good_contours_list:
-        logger.warning("No good contours found; skipping seed model generation.")
+    if not chunks:
+        logger.error(
+            "No valid contours remain after filtering; cannot write seed model."
+        )
         return
 
-    new_good_contours = np.vstack(new_good_contours_list)
-
-    # Remap contour ids to a dense 1..N range per row.
-    old_ids = new_good_contours[:, 0].astype(int)
-    unique_old_ids = np.unique(old_ids)
-    id_map = {old_id: i + 1 for i, old_id in enumerate(unique_old_ids)}
-    new_contour_id = np.array([id_map[old_id] for old_id in old_ids], dtype=int).reshape(
-        -1, 1
-    )
-    new_good_contours = np.hstack((new_contour_id, new_good_contours[:, 1:]))
+    new_good_contours = np.vstack(chunks)
 
     np.savetxt(
         txt4seed, new_good_contours, fmt=" ".join(["%d"] + ["%0.3f"] * 2 + ["%d"])
@@ -333,6 +334,30 @@ def detect_dark_tilts(
     return dark_frame_indices
 
 
+def filter_by_intensities(ts: io.TiltSeries, threshold: float, logger) -> list:
+    """
+    Identify tilt indices whose normalised intensity falls below `threshold`.
+
+    Normalisation is relative to the lowest-dose tilt (typically the 0° view).
+    Returns:
+        a list of integer indices into the *current* tilt stack;
+    """
+    doses = np.array(ts.doses)
+    intensities = np.array(ts.intensities)
+    tilt0_intensity = intensities[np.argmin(doses)]
+    normed_and_clipped = np.clip((intensities / tilt0_intensity), 0, 1)
+    below_threshold = np.where(normed_and_clipped <= threshold)[0].tolist()
+    if below_threshold:
+        logger.info(
+            f"Detected {len(below_threshold)} tilt(s) with normalised intensity "
+            f"< {threshold}: indices {below_threshold}, "
+            f"angles {np.array(ts.tilt_angles)[below_threshold].tolist()}"
+        )
+    else:
+        logger.info(f"No tilts below intensity threshold {threshold}.")
+    return below_threshold
+
+
 def swap_fast_slow_axes(tilt_dirname, tilt_name):
     (
         d,
@@ -364,6 +389,75 @@ def remove_xml_files(xml_file_path, logger):
             shutil.move(xml_file_path, backup_file_path)
         else:
             logger.warning(f"XML file {xml_file_path} not found.")
+
+
+def validate_tilt_series_counts(ts, ts_xml_path, logger):
+    """
+    Verify that the frame counts from all available metadata sources agree with
+    the MRC stack. Raises ValueError immediately if any mismatch is found.
+
+    Checks performed:
+      - rawtlt angle count vs MRC stack depth
+      - mdoc frame count vs MRC stack depth (if mdoc was loaded)
+      - tomostar entry count vs MRC stack depth (if tomostar was loaded)
+      - XML angle count vs MRC stack depth (if XML path was provided)
+    """
+    mrc_path = ts.get_mrc_path()
+    with mrcfile.open(mrc_path, mode="r", permissive=True) as mrc:
+        mrc_n_frames = mrc.data.shape[0]
+
+    mismatches = []
+
+    rawtlt_count = len(ts.tilt_angles)
+    if rawtlt_count != mrc_n_frames:
+        mismatches.append(
+            f"rawtlt has {rawtlt_count} angles but MRC stack has {mrc_n_frames} frames"
+        )
+
+    if ts.tilt_frames:
+        frame_count = len(ts.tilt_frames)
+        if frame_count != mrc_n_frames:
+            mismatches.append(
+                f"frame list (mdoc/tomostar) has {frame_count} entries "
+                f"but MRC stack has {mrc_n_frames} frames"
+            )
+
+    if len(ts.doses) > 0 and len(ts.intensities) > 0:
+        tomostar_count = len(ts.doses)
+        if tomostar_count != mrc_n_frames:
+            mismatches.append(
+                f"tomostar has {tomostar_count} entries "
+                f"but MRC stack has {mrc_n_frames} frames"
+            )
+
+    if ts_xml_path:
+        xml_file = ts_xml_path / f"{ts.basename}.xml"
+        if xml_file.exists():
+            try:
+                tree = ET.parse(xml_file)
+                root = tree.getroot()
+                angles_element = root.find("Angles")
+                if angles_element is not None:
+                    xml_count = len(angles_element.text.strip().split("\n"))
+                    if xml_count != mrc_n_frames:
+                        mismatches.append(
+                            f"XML Angles element has {xml_count} entries "
+                            f"but MRC stack has {mrc_n_frames} frames"
+                        )
+            except Exception as e:
+                logger.warning(f"Could not validate XML frame count: {e}")
+
+    if mismatches:
+        msg = (
+            f"Frame count mismatch for {ts.basename} — cannot proceed safely:\n"
+            + "\n".join(f"  • {m}" for m in mismatches)
+        )
+        logger.error(msg)
+        raise ValueError(msg)
+
+    logger.info(
+        f"Frame count validation passed: all sources agree on {mrc_n_frames} frames."
+    )
 
 
 if __name__ == "__main__":
