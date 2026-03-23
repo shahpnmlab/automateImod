@@ -796,5 +796,6 @@ def align_tilts(
         output_file=report_file,
     )
 
+
 if __name__ == "__main__":
     automateimod(align_tilts)
