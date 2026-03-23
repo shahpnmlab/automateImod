@@ -635,10 +635,20 @@ def align_tilts(
     ts_patch_size: str = typer.Option(
         ..., help="Size of patches for patch tracking (Å)."
     ),
+    ts_intensity_threshold: Optional[float] = typer.Option(
+        0.75,
+        "--ts-intensity-threshold",
+        help=(
+            "Remove tilts whose normalised intensity (relative to the lowest-dose view) "
+            "drops below this value. Requires a tomostar file; if none is provided the "
+            "pipeline falls back to pixel-level dark-tilt detection. "
+            "Pass None to skip intensity filtering entirely."
+        ),
+    ),
     min_fov: float = typer.Option(0.7, help="Minimum required field of view."),
     max_attempts: int = typer.Option(3, help="Max attempts for alignment improvement."),
     is_warp_proj: bool = typer.Option(
-        False,
+        True,
         "--is-warp-proj/--no-warp-proj",
         help="Indicates if it is a Warp project.",
     ),
@@ -656,15 +666,10 @@ def align_tilts(
         "--backup-xml/--no-backup-xml",
         help="Create a backup of the XML file before updating.",
     ),
-    ts_intensity_threshold: Optional[float] = typer.Option(
-        0.75,
-        "--ts-intensity-threshold",
-        help=(
-            "Remove tilts whose normalised intensity (relative to the lowest-dose view) "
-            "drops below this value. Requires a tomostar file; if none is provided the "
-            "pipeline falls back to pixel-level dark-tilt detection. "
-            "Pass None to skip intensity filtering entirely."
-        ),
+    report_file: Path = typer.Option(
+        "alignment_report.txt",
+        "--report-file",
+        help="Path for the alignment report generated after processing completes.",
     ),
 ):
     """
@@ -785,65 +790,11 @@ def align_tilts(
 
     client.close()
     cluster.close()
-
-
-@automateimod.command()
-def generate_alignment_report(
-    ts_proc_dir: Path = typer.Option(
-        ...,
-        help="Directory containing the IMOD processing directories for each tilt series.",
-    ),
-    output_file: Path = typer.Option(
-        "alignment_report.txt", help="Path for the output alignment report."
-    ),
-):
-    """
-    Compile alignment residuals into a report from 'align_patch.log' files.
-    """
-    print(f"Searching for tilt series directories in '{ts_proc_dir}'...")
-
-    ts_dirs = sorted(list(ts_proc_dir.glob("*/")))
-
-    if not ts_dirs:
-        print(f"No tilt series directories found in '{ts_proc_dir}'.")
-        return
-
-    results = []
-    for ts_dir in ts_dirs:
-        if not ts_dir.is_dir():
-            continue
-
-        ts_name = ts_dir.name
-        log_file = ts_dir / "align_patch.log"
-
-        resid_err_val, sd_val, resid_err_wt_val = "N/A", "N/A", "N/A"
-
-        if log_file.is_file():
-            with open(log_file, "r") as f_in:
-                for line in f_in:
-                    if "Residual error mean and sd" in line:
-                        parts = line.split()
-                        if len(parts) >= 7:
-                            resid_err_val = parts[5]
-                            sd_val = parts[6]
-                    if "error weighted mean" in line:
-                        parts = line.split()
-                        if len(parts) >= 5:
-                            resid_err_wt_val = parts[4]
-
-        results.append((ts_name, resid_err_val, sd_val, resid_err_wt_val))
-
-    if not results:
-        print("No alignment logs found to generate a report.")
-        return
-
-    with open(output_file, "w") as f_out:
-        f_out.write("ts_name\tresid_err\tsd\tresid_err_wt\n")
-        for item in results:
-            f_out.write(f"{item[0]}\t{item[1]}\t{item[2]}\t{item[3]}\n")
-
-    print(f"Generated alignment report at: {output_file}")
-
+    utils.generate_alignment_report(
+        ts_data_folder=ts_data_folder,
+        basenames=basenames_to_process,
+        output_file=report_file,
+    )
 
 if __name__ == "__main__":
-    automateimod()
+    automateimod(align_tilts)

@@ -9,7 +9,9 @@ import automateImod.calc as calc
 import automateImod.pio as io
 
 
-def build_autoimod_skip_list(ts_data_folder: Path, marker_name: str = "autoImod.marker"):
+def build_autoimod_skip_list(
+    ts_data_folder: Path, marker_name: str = "autoImod.marker"
+):
     """
     Recursively scan the tilt-series data folder for marker files and return
     a sorted list of top-level tilt-series basenames to skip.
@@ -458,6 +460,72 @@ def validate_tilt_series_counts(ts, ts_xml_path, logger):
     logger.info(
         f"Frame count validation passed: all sources agree on {mrc_n_frames} frames."
     )
+
+
+def generate_alignment_report(ts_data_folder: Path, basenames: list, output_file: Path):
+    """
+    Compile alignment residuals and final tilt counts into a formatted report.
+    Reads align_patch.log and the final .rawtlt from each processed tilt series
+    directory. Rows are sorted by residual error, low to high. N/A entries sort last.
+    """
+    results = []
+    for basename in sorted(basenames):
+        ts_dir = ts_data_folder / basename
+        log_file = ts_dir / "align_patch.log"
+        rawtlt_file = ts_dir / f"{basename}.rawtlt"
+
+        resid_err_val = sd_val = resid_err_wt_val = "N/A"
+        n_tilts_val = "N/A"
+
+        if log_file.is_file():
+            with open(log_file, "r") as f_in:
+                for line in f_in:
+                    if "Residual error mean and sd" in line:
+                        parts = line.split()
+                        if len(parts) >= 7:
+                            resid_err_val = parts[5]
+                            sd_val = parts[6]
+                    if "error weighted mean" in line:
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            resid_err_wt_val = parts[4]
+
+        if rawtlt_file.is_file():
+            try:
+                n_tilts_val = str(len(np.loadtxt(rawtlt_file)))
+            except Exception:
+                pass
+
+        results.append((basename, n_tilts_val, resid_err_val, sd_val, resid_err_wt_val))
+
+    # Sort by resid_err numerically; N/A entries go to the bottom
+    def sort_key(row):
+        try:
+            return float(row[2])
+        except (ValueError, TypeError):
+            return float("inf")
+
+    results.sort(key=sort_key)
+
+    # Build formatted table with padded columns for readability
+    headers = ("ts_name", "n_tilts", "resid_err", "sd", "resid_err_wt")
+    col_widths = [
+        max(len(headers[i]), max(len(row[i]) for row in results))
+        for i in range(len(headers))
+    ]
+
+    def fmt_row(row):
+        return "  ".join(str(val).ljust(col_widths[i]) for i, val in enumerate(row))
+
+    separator = "  ".join("-" * w for w in col_widths)
+
+    with open(output_file, "w") as f_out:
+        f_out.write(fmt_row(headers) + "\n")
+        f_out.write(separator + "\n")
+        for row in results:
+            f_out.write(fmt_row(row) + "\n")
+
+    print(f"Alignment report written to: {output_file}")
 
 
 if __name__ == "__main__":
