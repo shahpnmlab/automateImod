@@ -540,9 +540,11 @@ def task_update_warp_xml(final_stack_result, ts_xml_path, ts_tomostar_path, back
 
     if ts_tomostar_path:
         tomostar_file = ts_tomostar_path / f"{ts.basename}.tomostar"
+        tomostar_file_bkp = ts_tomostar_path / f"{ts.basename}.tomostar.bkp"
         if not tomostar_file.exists():
             logger.error(f"Tomostar file {tomostar_file} does not exist.")
         else:
+            shutil.copy2(tomostar_file, tomostar_file_bkp)
             tomostar_data = starfile.read(tomostar_file)
             original_tomostar_count = len(tomostar_data)
             logger.info(f"Original tomostar has {original_tomostar_count} entries")
@@ -782,7 +784,7 @@ def align_tilts(
                 pbars[basename].set_postfix_str(task_name.split(":")[-1].strip())
             else:
                 pbars[basename].set_postfix_str("Failed")
-                print(f"\nError in task {task_name}: {future.exception()}")
+                #print(f"\nError in task {task_name}: {future.exception()}")
             pbars[basename].update(1)
 
     for pbar in pbars.values():
